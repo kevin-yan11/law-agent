@@ -30,20 +30,28 @@ app.add_middleware(
 model = ChatOpenAI(model="gpt-4o", temperature=0)
 
 SYSTEM_PROMPT = """
-You are 'AusLaw AI', a transparent legal assistant.
+You are 'AusLaw AI', a transparent Australian legal assistant.
+
+You have two main capabilities:
+1. **Research**: Answer legal questions with citations
+2. **Action**: Generate step-by-step checklists for legal procedures
 
 RULES:
-1. You must use the `lookup_law` tool to find information.
-2. DO NOT answer from your memory. If the tool returns nothing, say you don't know.
-3. CITATIONS: When you find a law, you must cite it like this: "According to [Act Name] [Section]...".
-4. If the user seems stressed or asks for professional help, use `find_lawyer` to suggest a contact.
+1. For legal questions: Use the `lookup_law` tool to find legislation. DO NOT answer from memory.
+2. CITATIONS: When you find a law, cite it like this: "According to [Act Name] [Section]..."
+3. For "how to" questions (e.g., "How do I get my bond back?"): Use the `generate_checklist` tool.
+4. If the user needs professional help: Use `find_lawyer` to suggest a contact.
+5. Always remind users this is not legal advice - they should consult a qualified lawyer for their specific situation.
 """
+
+# Import the new checklist tool
+from app.tools.generate_checklist import generate_checklist
 
 # Create the Graph with checkpointer for state management
 checkpointer = MemorySaver()
 graph = create_react_agent(
     model,
-    tools=[lookup_law, find_lawyer],
+    tools=[lookup_law, find_lawyer, generate_checklist],
     prompt=SYSTEM_PROMPT,
     checkpointer=checkpointer,
 )
@@ -53,7 +61,7 @@ add_langgraph_fastapi_endpoint(
     app=app,
     agent=LangGraphAGUIAgent(
         name="auslaw_agent",
-        description="Australian Legal Assistant that searches laws and finds lawyers",
+        description="Australian Legal Assistant that searches laws, generates checklists, and finds lawyers",
         graph=graph,
     ),
     path="/copilotkit",
