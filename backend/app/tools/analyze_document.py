@@ -1,10 +1,12 @@
 """Analyze document tool - analyzes uploaded legal documents."""
 
+from typing import Optional
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.config import logger
+from app.utils.url_fetcher import fetch_and_parse_document
 
 
 llm = ChatOpenAI(model="gpt-4o", temperature=0)
@@ -54,19 +56,34 @@ Provide a clear summary and highlight anything requiring attention."""
 
 
 @tool
-def analyze_document(document_text: str, analysis_type: str = "general", state: str = "VIC") -> str:
+def analyze_document(
+    document_url: Optional[str] = None,
+    document_text: Optional[str] = None,
+    analysis_type: str = "general",
+    state: str = "VIC"
+) -> str:
     """
     Analyze a legal document and provide insights.
 
     Args:
-        document_text: The text content of the uploaded document
+        document_url: URL to fetch the document from (e.g., Supabase Storage URL). Use this when user has uploaded a file.
+        document_text: Direct text content of the document (fallback if URL not provided)
         analysis_type: Type of document - "lease", "contract", "visa", or "general"
         state: Australian state for jurisdiction-specific analysis (VIC, NSW, QLD, etc.)
 
     Returns:
         Detailed analysis of the document with key findings and recommendations.
     """
-    logger.info(f"analyze_document called: type='{analysis_type}', state='{state}', text_length={len(document_text)}")
+    # If URL provided, fetch and parse the document
+    if document_url:
+        logger.info(f"analyze_document called with URL: {document_url}")
+        try:
+            document_text, content_type = fetch_and_parse_document(document_url)
+            logger.info(f"Fetched document: type={content_type}, length={len(document_text)}")
+        except ValueError as e:
+            return f"Failed to fetch document from URL: {str(e)}"
+
+    logger.info(f"analyze_document: type='{analysis_type}', state='{state}', text_length={len(document_text) if document_text else 0}")
 
     if not document_text or len(document_text.strip()) < 50:
         return "The document appears to be empty or too short to analyze. Please upload a valid document."

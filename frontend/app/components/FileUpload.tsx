@@ -1,13 +1,19 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+// Initialize Supabase client
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 interface FileUploadProps {
-  onFileContent: (content: string, filename: string) => void;
+  onFileUploaded: (url: string, filename: string) => void;
   disabled?: boolean;
 }
 
-export function FileUpload({ onFileContent, disabled }: FileUploadProps) {
+export function FileUpload({ onFileUploaded, disabled }: FileUploadProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -20,22 +26,30 @@ export function FileUpload({ onFileContent, disabled }: FileUploadProps) {
     setUploadedFile(null);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
+      // Generate unique filename with timestamp
+      const timestamp = Date.now();
+      const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+      const filePath = `uploads/${timestamp}_${safeName}`;
 
-      const response = await fetch("http://localhost:8000/upload", {
-        method: "POST",
-        body: formData,
-      });
+      // Upload to Supabase Storage
+      const { data, error } = await supabase.storage
+        .from("documents")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: false,
+        });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || "Upload failed");
+      if (error) {
+        throw new Error(error.message);
       }
 
-      const data = await response.json();
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from("documents")
+        .getPublicUrl(data.path);
+
       setUploadedFile(file.name);
-      onFileContent(data.parsed_content, file.name);
+      onFileUploaded(urlData.publicUrl, file.name);
     } catch (error) {
       console.error("Upload error:", error);
       alert(error instanceof Error ? error.message : "Failed to upload file");

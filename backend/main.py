@@ -52,9 +52,10 @@ RULES:
    Example: "According to the **Residential Tenancies Act 1997 s.44** (VIC)..."
 3. For "how to" questions: Use `generate_checklist(procedure, state)` tool.
 4. For lawyer requests: Use `find_lawyer(specialty, state)`.
-5. For uploaded documents (leases, contracts, visa docs): Use `analyze_document(document_text, analysis_type, state)`.
+5. For uploaded documents (leases, contracts, visa docs): Use `analyze_document(document_url, analysis_type, state)`.
    - analysis_type options: "lease", "contract", "visa", "general"
-   - When user uploads a file, the content will be provided in the message. Pass the full text to analyze_document.
+   - When user uploads a file, the document URL will be provided. Pass the URL to analyze_document using the document_url parameter.
+   - IMPORTANT: When analyze_document returns a result, present the FULL analysis to the user. Do NOT summarize or shorten the tool's output.
 6. End responses with: "_This is general information, not legal advice. Please consult a qualified lawyer for your specific situation._"
 """
 
@@ -71,8 +72,9 @@ def extract_context_item(state: AgentState, keyword: str) -> str | None:
 
     for item in context_items:
         try:
-            description = item.description if hasattr(item, "description") else item.get("description", "")
-            value = item.value if hasattr(item, "value") else item.get("value", "")
+            # CopilotContextItem can be a TypedDict or an object with attributes
+            description = item.get("description", "") if isinstance(item, dict) else getattr(item, "description", "")
+            value = item.get("value", "") if isinstance(item, dict) else getattr(item, "value", "")
 
             if keyword.lower() in description.lower():
                 return value
@@ -82,14 +84,25 @@ def extract_context_item(state: AgentState, keyword: str) -> str | None:
     return None
 
 
+def clean_context_value(value: str | None) -> str | None:
+    """Remove extra quotes from context values if present."""
+    if value and isinstance(value, str):
+        # Strip leading/trailing quotes that may be added by serialization
+        if value.startswith('"') and value.endswith('"'):
+            value = value[1:-1]
+        # Unescape inner quotes
+        value = value.replace('\\"', '"')
+    return value
+
+
 def extract_user_state(state: AgentState) -> str | None:
     """Extract user's Australian state from CopilotKit context."""
-    return extract_context_item(state, "state/territory")
+    return clean_context_value(extract_context_item(state, "state/territory"))
 
 
 def extract_uploaded_document(state: AgentState) -> str | None:
     """Extract uploaded document content from CopilotKit context."""
-    return extract_context_item(state, "document")
+    return clean_context_value(extract_context_item(state, "document"))
 
 
 def chat_node(state: AgentState, config: RunnableConfig):
@@ -115,16 +128,15 @@ USER LOCATION: Not yet selected.
 Ask the user to select their Australian state/territory so you can provide accurate legal information.
 """
 
-    # Add document context if available
+    # Add document context if available (URL-based)
     document_instruction = ""
-    if uploaded_document and "DOCUMENT START" in uploaded_document:
+    if uploaded_document and "document url" in uploaded_document.lower():
         document_instruction = f"""
 UPLOADED DOCUMENT:
 {uploaded_document}
 
-IMPORTANT: The user has uploaded a document. When they ask to analyze it, use the analyze_document tool with the document content above.
+IMPORTANT: The user has uploaded a document. When they ask to analyze it, use the analyze_document tool with the document_url parameter from the context above.
 """
-        logger.info("Document context found and added to system message")
 
     system_message = SystemMessage(content=BASE_SYSTEM_PROMPT + state_instruction + document_instruction)
 

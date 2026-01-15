@@ -9,7 +9,7 @@ import { FileUpload } from "./components/FileUpload";
 export default function Home() {
   const [userState, setUserState] = useState<string | null>(null);
   const [uploadedDocument, setUploadedDocument] = useState<{
-    content: string;
+    url: string;
     filename: string;
   } | null>(null);
 
@@ -21,16 +21,16 @@ export default function Home() {
       : "User has not selected their state yet.",
   });
 
-  // Share uploaded document content with the Copilot agent
+  // Share uploaded document URL with the Copilot agent
   useCopilotReadable({
-    description: "Uploaded document content for analysis",
+    description: "Uploaded document URL for analysis",
     value: uploadedDocument
-      ? `The user has uploaded a document named "${uploadedDocument.filename}". Here is the document content:\n\n---DOCUMENT START---\n${uploadedDocument.content}\n---DOCUMENT END---\n\nUse the analyze_document tool to analyze this content. Automatically detect the document type (lease, contract, visa, or general) based on the content.`
+      ? `The user has uploaded a document named "${uploadedDocument.filename}". The document URL is: ${uploadedDocument.url}\n\nWhen the user asks to analyze this document, use the analyze_document tool with document_url="${uploadedDocument.url}". Automatically detect the document type (lease, contract, visa, or general) based on the filename or user's request.`
       : "No document uploaded yet.",
   });
 
-  const handleFileContent = (content: string, filename: string) => {
-    setUploadedDocument({ content, filename });
+  const handleFileUploaded = (url: string, filename: string) => {
+    setUploadedDocument({ url, filename });
   };
 
   const clearDocument = () => {
@@ -76,7 +76,7 @@ export default function Home() {
             <p className="text-slate-600 text-sm mb-3">
               Upload a lease, contract, or legal document for analysis.
             </p>
-            <FileUpload onFileContent={handleFileContent} />
+            <FileUpload onFileUploaded={handleFileUploaded} />
             {uploadedDocument && (
               <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded flex items-center justify-between">
                 <span className="text-green-700 text-sm truncate">
