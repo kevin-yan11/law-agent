@@ -11,14 +11,14 @@ AusLaw AI - An Australian Legal Assistant MVP that provides legal information, l
 ```
 Frontend (Next.js)  →  /api/copilotkit  →  FastAPI Backend  →  Supabase
      ↓                      ↓                    ↓
-CopilotSidebar      HttpAgent proxy      Custom LangGraph
+CopilotChat         HttpAgent proxy      Custom LangGraph
 + StateSelector     (AG-UI protocol)     (CopilotKitState)
 + FileUpload                                   ↓
 + useCopilotReadable              Tools: lookup_law, find_lawyer,
                                   generate_checklist, analyze_document
 ```
 
-**Frontend**: Next.js 14 + CopilotKit + Tailwind CSS
+**Frontend**: Next.js 14 + CopilotKit + shadcn/ui + Tailwind CSS
 **Backend**: FastAPI + LangGraph + langchain-openai (GPT-4o)
 **Database**: Supabase PostgreSQL with pgvector for RAG
 **Storage**: Supabase Storage for document uploads
@@ -144,6 +144,29 @@ backend/
 | >= 10K chars | Parent (2000 tokens) + Child (500 tokens) chunks |
 
 Retrieval uses child chunks for precision, then fetches parent chunk for fuller context.
+
+## Frontend Structure
+
+```
+frontend/
+├── app/
+│   ├── page.tsx                # Main page with CopilotChat integration
+│   ├── layout.tsx              # Root layout with CopilotKit provider
+│   ├── globals.css             # Tailwind + shadcn CSS variables
+│   ├── components/
+│   │   ├── StateSelector.tsx   # Australian state/territory dropdown
+│   │   └── FileUpload.tsx      # Supabase Storage upload component
+│   └── api/copilotkit/route.ts # Proxy to FastAPI backend
+├── components/ui/              # shadcn/ui components (Card, Alert, Button, etc.)
+├── lib/utils.ts                # shadcn cn() utility
+└── components.json             # shadcn configuration
+```
+
+### Adding shadcn Components
+```bash
+cd frontend
+npx shadcn@latest add <component-name>
+```
 
 ## Code Style
 
