@@ -1,10 +1,29 @@
 "use client";
 
 import { useState } from "react";
-import { CopilotSidebar } from "@copilotkit/react-ui";
-import { useCopilotReadable } from "@copilotkit/react-core";
+import { CopilotChat } from "@copilotkit/react-ui";
+import { useCopilotReadable, useCopilotChat } from "@copilotkit/react-core";
+import { TextMessage, MessageRole } from "@copilotkit/runtime-client-gql";
 import { StateSelector } from "./components/StateSelector";
 import { FileUpload } from "./components/FileUpload";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Scale,
+  MapPin,
+  AlertTriangle,
+  ArrowRight,
+  FileCheck,
+  X,
+} from "lucide-react";
 
 export default function Home() {
   const [userState, setUserState] = useState<string | null>(null);
@@ -46,84 +65,105 @@ export default function Home() {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50">
+    <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* Left Side: Info Panel */}
-      <div className="w-1/2 p-8 border-r border-slate-200 flex flex-col">
+      <div className="w-1/2 p-10 border-r border-slate-200/80 flex flex-col overflow-y-auto">
         {/* Header with State Selector */}
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-slate-800">AusLaw AI</h1>
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-3">
+            <Scale className="h-7 w-7 text-blue-600" />
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+              AusLaw AI
+            </h1>
+          </div>
           <StateSelector selectedState={userState} onStateChange={setUserState} />
         </div>
 
         {/* Info Cards */}
-        <div className="space-y-4 flex-1">
+        <div className="space-y-5 flex-1">
           {/* Current State Info */}
           {userState && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-center gap-2 text-blue-800">
-                <span className="text-lg">📍</span>
-                <span className="font-medium">Your jurisdiction: {userState}</span>
-              </div>
-              <p className="text-blue-600 text-sm mt-1">
+            <Alert className="border-blue-200 bg-blue-50/80">
+              <MapPin className="h-4 w-4 text-blue-600" />
+              <AlertTitle className="text-blue-800">
+                Your jurisdiction: {userState}
+              </AlertTitle>
+              <AlertDescription className="text-blue-600">
                 Legal information will be tailored to {userState} law.
-              </p>
-            </div>
+              </AlertDescription>
+            </Alert>
           )}
 
           {/* Document Upload */}
-          <div className="bg-white border border-slate-200 rounded-lg p-4">
-            <h3 className="font-medium text-slate-800 mb-3">Upload Document</h3>
-            <p className="text-slate-600 text-sm mb-3">
-              Upload a lease, contract, or legal document for analysis.
-            </p>
-            <FileUpload onFileUploaded={handleFileUploaded} />
-            {uploadedDocument && (
-              <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded flex items-center justify-between">
-                <span className="text-green-700 text-sm truncate">
-                  {uploadedDocument.filename} ready for analysis
-                </span>
-                <button
-                  onClick={clearDocument}
-                  className="text-green-600 hover:text-green-800 text-sm ml-2"
-                >
-                  Clear
-                </button>
-              </div>
-            )}
-          </div>
+          <Card className="shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-medium">
+                Upload Document
+              </CardTitle>
+              <CardDescription>
+                Upload a lease, contract, or legal document for analysis.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <FileUpload onFileUploaded={handleFileUploaded} />
+              {uploadedDocument && (
+                <div className="mt-3 flex items-center gap-2">
+                  <Badge variant="secondary" className="gap-2 py-1.5">
+                    <FileCheck className="h-3 w-3 text-green-600" />
+                    <span className="truncate max-w-[180px]">
+                      {uploadedDocument.filename}
+                    </span>
+                    <button
+                      onClick={clearDocument}
+                      className="ml-1 hover:text-destructive transition-colors"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    Ready for analysis
+                  </span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Quick Actions */}
-          <div className="bg-white border border-slate-200 rounded-lg p-4">
-            <h3 className="font-medium text-slate-800 mb-3">Common Questions</h3>
-            <div className="space-y-2">
+          <Card className="shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-medium">
+                Common Questions
+              </CardTitle>
+              <CardDescription>Click to ask a question in the chat.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-1">
               <QuickAction text="What are my rights as a tenant?" />
               <QuickAction text="How do I get my bond back?" />
               <QuickAction text="Can my landlord increase rent?" />
               <QuickAction text="I need a lawyer" />
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
           {/* Disclaimer */}
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mt-auto">
-            <p className="text-amber-800 text-sm">
-              <strong>Disclaimer:</strong> This tool provides general legal information,
-              not legal advice. For advice specific to your situation, please consult
-              a qualified lawyer.
-            </p>
-          </div>
+          <Alert className="mt-auto border-amber-200 bg-amber-50/80">
+            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <AlertTitle className="text-amber-800">Disclaimer</AlertTitle>
+            <AlertDescription className="text-amber-700">
+              This tool provides general legal information, not legal advice. For
+              advice specific to your situation, please consult a qualified lawyer.
+            </AlertDescription>
+          </Alert>
         </div>
       </div>
 
-      {/* Right Side: Copilot Sidebar */}
-      <div className="w-1/2 relative">
-        <CopilotSidebar
-          defaultOpen={true}
+      {/* Right Side: Copilot Chat */}
+      <div className="w-1/2 flex flex-col">
+        <CopilotChat
+          className="h-full"
           labels={{
             title: "AusLaw AI",
             initial: getInitialMessage(),
           }}
-          imageUploadsEnabled={true}
-          inputFileAccept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
         />
       </div>
     </div>
@@ -131,9 +171,25 @@ export default function Home() {
 }
 
 function QuickAction({ text }: { text: string }) {
+  const { appendMessage } = useCopilotChat();
+
+  const handleClick = async () => {
+    await appendMessage(
+      new TextMessage({
+        role: MessageRole.User,
+        content: text,
+      })
+    );
+  };
+
   return (
-    <button className="w-full text-left px-3 py-2 text-sm text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-md transition">
-      → {text}
-    </button>
+    <Button
+      variant="ghost"
+      className="w-full justify-start text-left h-auto py-2.5 px-3 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+      onClick={handleClick}
+    >
+      <ArrowRight className="mr-2 h-3 w-3 text-slate-400" />
+      {text}
+    </Button>
   );
 }
