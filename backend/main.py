@@ -1,7 +1,10 @@
 import os
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage
 from langchain_core.runnables import RunnableConfig
@@ -14,7 +17,13 @@ from ag_ui_langgraph import add_langgraph_fastapi_endpoint
 from app.tools import lookup_law, find_lawyer, analyze_document
 from app.tools.generate_checklist import generate_checklist
 from app.utils.document_parser import parse_document
-from app.config import logger
+from app.config import logger, CORS_ORIGINS
+
+# Security: File upload size limit (10MB)
+MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024
+
+# Rate limiter
+limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
     title="AusLaw AI API",
@@ -22,10 +31,14 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# Rate limiting setup
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # Add CORS middleware for frontend communication
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
@@ -223,7 +236,8 @@ def health_check():
 
 
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+@limiter.limit("10/minute")
+async def upload_file(request: Request, file: UploadFile = File(...)):
     """
     Upload and parse a document (PDF, DOCX, or image).
     Returns the parsed text content.
@@ -239,7 +253,14 @@ async def upload_file(file: UploadFile = File(...)):
         )
 
     try:
+        # Security: Check file size before reading entirely into memory
         content = await file.read()
+        if len(content) > MAX_UPLOAD_SIZE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Maximum size is {MAX_UPLOAD_SIZE_BYTES // (1024*1024)}MB"
+            )
+
         parsed_content, content_type = parse_document(content, filename)
 
         logger.info(f"Parsed file: {filename}, type: {content_type}, length: {len(parsed_content)}")
@@ -249,6 +270,8 @@ async def upload_file(file: UploadFile = File(...)):
             "content_type": content_type,
             "parsed_content": parsed_content,
         }
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

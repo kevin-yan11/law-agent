@@ -315,12 +315,10 @@ class CorpusIngester:
                 all_embeddings.extend(batch_embeddings)
                 self.stats["embeddings_generated"] += len(batch_embeddings)
 
-                # Small delay to avoid rate limits
-                if i + self.batch_size < len(chunk_texts):
-                    await asyncio.sleep(0.2)
 
-            # First pass: insert parent chunks
-            parent_id_map = {}
+            # First pass: batch insert parent chunks
+            parent_chunks_data = []
+            parent_chunk_indices = []  # Track chunk_index for mapping
 
             for chunk, embedding in zip(chunks, all_embeddings):
                 if chunk["chunk_type"] == "parent":
@@ -333,19 +331,26 @@ class CorpusIngester:
                         "chunk_index": chunk["chunk_index"],
                         "token_count": chunk["token_count"],
                     }
+                    parent_chunks_data.append(chunk_data)
+                    parent_chunk_indices.append(chunk["chunk_index"])
 
-                    chunk_response = supabase.table("legislation_chunks") \
-                        .insert(chunk_data) \
-                        .execute()
+            # Batch insert all parent chunks at once
+            parent_id_map = {}
+            if parent_chunks_data:
+                parent_response = supabase.table("legislation_chunks") \
+                    .insert(parent_chunks_data) \
+                    .execute()
 
-                    parent_id_map[chunk["chunk_index"]] = chunk_response.data[0]["id"]
-                    self.stats["chunks_created"] += 1
+                # Map chunk_index to database ID
+                for idx, row in zip(parent_chunk_indices, parent_response.data):
+                    parent_id_map[idx] = row["id"]
+                self.stats["chunks_created"] += len(parent_chunks_data)
 
-            # Second pass: insert child chunks
+            # Second pass: batch insert child chunks
+            child_chunks_data = []
             for chunk, embedding in zip(chunks, all_embeddings):
                 if chunk["chunk_type"] == "child":
                     parent_db_id = parent_id_map.get(chunk["parent_index"])
-
                     chunk_data = {
                         "document_id": document_id,
                         "parent_chunk_id": parent_db_id,
@@ -355,12 +360,14 @@ class CorpusIngester:
                         "chunk_index": chunk["chunk_index"],
                         "token_count": chunk["token_count"],
                     }
+                    child_chunks_data.append(chunk_data)
 
-                    supabase.table("legislation_chunks") \
-                        .insert(chunk_data) \
-                        .execute()
-
-                    self.stats["chunks_created"] += 1
+            # Batch insert all child chunks at once
+            if child_chunks_data:
+                supabase.table("legislation_chunks") \
+                    .insert(child_chunks_data) \
+                    .execute()
+                self.stats["chunks_created"] += len(child_chunks_data)
 
             self.stats["documents_processed"] += 1
             logger.info(f"✓ Ingested: {citation} ({len(chunks)} chunks)")

@@ -43,9 +43,18 @@ npm run lint
 ### Data Ingestion (RAG)
 ```bash
 cd backend
-python scripts/ingest_corpus.py --limit 10    # Test with 10 docs
-python scripts/ingest_corpus.py --dry-run     # Preview without changes
-python scripts/ingest_corpus.py               # Full ingestion (~6000 docs)
+python scripts/ingest_corpus.py --limit 10              # Test with 10 docs
+python scripts/ingest_corpus.py --dry-run               # Preview without changes
+python scripts/ingest_corpus.py --batch-size 500        # Full ingestion (~6000 docs, optimized)
+```
+
+### RAG Evaluation
+```bash
+cd backend
+python scripts/eval_rag.py              # Auto-generate test cases from DB
+python scripts/eval_rag.py --verbose    # Show detailed results per case
+python scripts/eval_rag.py --stats      # Show DB statistics first
+python scripts/eval_rag.py --static     # Use hardcoded test cases instead
 ```
 
 ### Database
@@ -119,7 +128,8 @@ backend/
 │       ├── document_parser.py  # PDF, DOCX, image parsing
 │       └── url_fetcher.py      # Fetch documents from URLs
 ├── scripts/
-│   └── ingest_corpus.py    # Hugging Face dataset ingestion
+│   ├── ingest_corpus.py    # Hugging Face dataset ingestion (batch inserts)
+│   └── eval_rag.py         # RAG retrieval quality evaluation
 ```
 
 ## Database Schema
@@ -144,6 +154,9 @@ backend/
 | >= 10K chars | Parent (2000 tokens) + Child (500 tokens) chunks |
 
 Retrieval uses child chunks for precision, then fetches parent chunk for fuller context.
+
+### Ingestion Performance
+The ingestion script uses batch inserts for chunks (all parent chunks in one INSERT, all child chunks in another) rather than individual inserts. Use `--batch-size 500` for optimal embedding API throughput. Full ingestion of ~6000 docs takes approximately 6-8 hours.
 
 ## Frontend Structure
 

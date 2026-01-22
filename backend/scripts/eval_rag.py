@@ -2,17 +2,19 @@
 RAG Evaluation Script for AusLaw AI
 
 Evaluates the quality of the legal document retrieval system using
-a curated set of test queries with expected citations.
+test queries dynamically generated from actual database content.
 
 Usage:
     cd backend
     conda activate law_agent
-    python scripts/eval_rag.py
-    python scripts/eval_rag.py --verbose  # Show detailed results
+    python scripts/eval_rag.py              # Auto-generate test cases from DB
+    python scripts/eval_rag.py --verbose    # Show detailed results
+    python scripts/eval_rag.py --stats      # Show DB statistics first
+    python scripts/eval_rag.py --static     # Use hardcoded test cases instead
 """
 
 import argparse
-import asyncio
+import re
 import sys
 from pathlib import Path
 from dataclasses import dataclass
@@ -21,7 +23,7 @@ from dataclasses import dataclass
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.tools.lookup_law import lookup_law
-from app.config import logger
+from app.db import supabase
 
 
 @dataclass
@@ -29,96 +31,118 @@ class EvalCase:
     """A single evaluation test case."""
     query: str
     jurisdiction: str
-    expected_citations: list[str]  # Partial matches OK (e.g., "Residential Tenancies" matches "Residential Tenancies Act 2010")
+    expected_citations: list[str]  # Partial matches OK
     description: str = ""
 
 
-# Evaluation dataset - add more cases as you discover edge cases
-EVAL_CASES = [
-    # NSW Tenancy
-    EvalCase(
-        query="tenant bond refund timeframe",
-        jurisdiction="NSW",
-        expected_citations=["Residential Tenancies"],
-        description="Bond refund rules in NSW"
-    ),
-    EvalCase(
-        query="landlord notice period to end tenancy",
-        jurisdiction="NSW",
-        expected_citations=["Residential Tenancies"],
-        description="Termination notice requirements NSW"
-    ),
-    EvalCase(
-        query="rent increase notice requirements",
-        jurisdiction="NSW",
-        expected_citations=["Residential Tenancies"],
-        description="Rent increase rules NSW"
-    ),
+def generate_eval_cases_from_db(max_per_jurisdiction: int = 10) -> list[EvalCase]:
+    """
+    Dynamically generate evaluation cases based on actual legislation in the database.
 
-    # QLD Tenancy
+    Queries the database for random legislation and creates test cases
+    using keywords extracted from the citation.
+
+    Args:
+        max_per_jurisdiction: Maximum test cases per jurisdiction
+
+    Returns:
+        List of EvalCase objects based on current DB content
+    """
+    cases = []
+
+    for jurisdiction in ["NSW", "QLD", "FEDERAL"]:
+        try:
+            # Get random sample of legislation from this jurisdiction
+            response = supabase.table("legislation_documents") \
+                .select("citation") \
+                .eq("jurisdiction", jurisdiction) \
+                .limit(max_per_jurisdiction) \
+                .execute()
+
+            if not response.data:
+                continue
+
+            for doc in response.data:
+                citation = doc["citation"]
+                # Extract keywords from citation for query
+                # e.g., "Conveyancers Licensing Act 2003 (NSW)" -> "conveyancers licensing"
+                query = _citation_to_query(citation)
+                if query:
+                    cases.append(EvalCase(
+                        query=query,
+                        jurisdiction=jurisdiction,
+                        expected_citations=[_extract_act_name(citation)],
+                        description=f"{jurisdiction}: {citation[:50]}"
+                    ))
+
+        except Exception as e:
+            print(f"Error fetching {jurisdiction} legislation: {e}")
+
+    return cases
+
+
+def _citation_to_query(citation: str) -> str:
+    """
+    Convert a citation to a search query by extracting key terms.
+
+    Args:
+        citation: Full citation like "Conveyancers Licensing Act 2003 (NSW)"
+
+    Returns:
+        Search query like "conveyancers licensing"
+    """
+    # Remove year and state suffix
+    # "Conveyancers Licensing Act 2003 (NSW)" -> "Conveyancers Licensing Act"
+    cleaned = re.sub(r'\s*\d{4}\s*', ' ', citation)  # Remove year
+    cleaned = re.sub(r'\s*\([^)]+\)\s*', ' ', cleaned)  # Remove (NSW), (Qld), etc.
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()  # Normalize spaces
+
+    # Remove common suffixes that don't help search
+    cleaned = re.sub(r'\s+Act$', '', cleaned, flags=re.IGNORECASE)
+
+    # Take first 3-4 meaningful words
+    words = cleaned.split()[:4]
+
+    return ' '.join(words).lower()
+
+
+def _extract_act_name(citation: str) -> str:
+    """
+    Extract the Act name without year for partial matching.
+
+    Args:
+        citation: Full citation like "Conveyancers Licensing Act 2003 (NSW)"
+
+    Returns:
+        Act name like "Conveyancers Licensing Act"
+    """
+    # Remove year and state
+    cleaned = re.sub(r'\s*\d{4}\s*', ' ', citation)
+    cleaned = re.sub(r'\s*\([^)]+\)\s*', ' ', cleaned)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+
+    return cleaned
+
+
+# Static fallback cases (used if DB query fails)
+STATIC_EVAL_CASES = [
     EvalCase(
-        query="bond refund dispute resolution",
+        query="conveyancer licensing requirements",
+        jurisdiction="NSW",
+        expected_citations=["Conveyancers Licensing Act"],
+        description="Conveyancer licensing NSW"
+    ),
+    EvalCase(
+        query="government advertising rules",
+        jurisdiction="NSW",
+        expected_citations=["Government Advertising Act"],
+        description="Government advertising NSW"
+    ),
+    EvalCase(
+        query="education curriculum assessment",
         jurisdiction="QLD",
-        expected_citations=["Residential Tenancies", "Rooming Accommodation"],
-        description="Bond disputes in QLD"
-    ),
-    EvalCase(
-        query="tenant rights for repairs",
-        jurisdiction="QLD",
-        expected_citations=["Residential Tenancies", "Rooming Accommodation"],
-        description="Repair obligations QLD"
-    ),
-
-    # Federal - Family Law
-    EvalCase(
-        query="child custody arrangements divorce",
-        jurisdiction="FEDERAL",
-        expected_citations=["Family Law"],
-        description="Custody under federal family law"
-    ),
-    EvalCase(
-        query="property settlement after separation",
-        jurisdiction="FEDERAL",
-        expected_citations=["Family Law"],
-        description="Property division federal"
-    ),
-
-    # Federal - Criminal
-    EvalCase(
-        query="fraud criminal penalties",
-        jurisdiction="FEDERAL",
-        expected_citations=["Criminal Code", "Crimes Act"],
-        description="Federal fraud offences"
-    ),
-
-    # NSW Criminal
-    EvalCase(
-        query="assault charges and penalties",
-        jurisdiction="NSW",
-        expected_citations=["Crimes Act"],
-        description="Assault offences NSW"
-    ),
-
-    # Employment
-    EvalCase(
-        query="unfair dismissal claim requirements",
-        jurisdiction="FEDERAL",
-        expected_citations=["Fair Work"],
-        description="Unfair dismissal federal"
-    ),
-    EvalCase(
-        query="minimum wage requirements",
-        jurisdiction="FEDERAL",
-        expected_citations=["Fair Work"],
-        description="Minimum wage federal"
-    ),
-
-    # Consumer Protection
-    EvalCase(
-        query="consumer refund rights faulty product",
-        jurisdiction="FEDERAL",
-        expected_citations=["Consumer Law", "Competition and Consumer"],
-        description="Consumer guarantees federal"
+        expected_citations=["Education", "Curriculum"],
+        description="Education curriculum QLD"
     ),
 ]
 
@@ -152,13 +176,12 @@ def check_citation_match(retrieved: str, expected_list: list[str]) -> list[str]:
     return matches
 
 
-def evaluate_case(case: EvalCase, verbose: bool = False) -> EvalResult:
+def evaluate_case(case: EvalCase) -> EvalResult:
     """
     Evaluate a single test case.
 
     Args:
         case: The evaluation case to test
-        verbose: Whether to print detailed output
 
     Returns:
         EvalResult with success/failure and details
@@ -212,12 +235,13 @@ def evaluate_case(case: EvalCase, verbose: bool = False) -> EvalResult:
         )
 
 
-def run_evaluation(verbose: bool = False) -> dict:
+def run_evaluation(verbose: bool = False, use_static: bool = False) -> dict:
     """
     Run the full evaluation suite.
 
     Args:
         verbose: Whether to print detailed output per case
+        use_static: Use static test cases instead of generating from DB
 
     Returns:
         Dictionary with evaluation metrics
@@ -225,12 +249,21 @@ def run_evaluation(verbose: bool = False) -> dict:
     print("=" * 60)
     print("AusLaw AI - RAG Evaluation")
     print("=" * 60)
-    print(f"\nRunning {len(EVAL_CASES)} test cases...\n")
+
+    # Get test cases
+    if use_static:
+        eval_cases = STATIC_EVAL_CASES
+        print("\nUsing static test cases")
+    else:
+        eval_cases = generate_eval_cases_from_db()
+        print(f"\nGenerated {len(eval_cases)} test cases from database")
+
+    print(f"Running {len(eval_cases)} test cases...\n")
 
     results: list[EvalResult] = []
 
-    for i, case in enumerate(EVAL_CASES, 1):
-        result = evaluate_case(case, verbose)
+    for i, case in enumerate(eval_cases, 1):
+        result = evaluate_case(case)
         results.append(result)
 
         # Progress indicator
@@ -238,7 +271,7 @@ def run_evaluation(verbose: bool = False) -> dict:
         status_color = "\033[92m" if result.success else "\033[91m"
         reset_color = "\033[0m"
 
-        print(f"[{i:2d}/{len(EVAL_CASES)}] {status_color}{status}{reset_color} | {case.jurisdiction:7s} | {case.query[:45]}")
+        print(f"[{i:2d}/{len(eval_cases)}] {status_color}{status}{reset_color} | {case.jurisdiction:7s} | {case.query[:45]}")
 
         if verbose:
             print(f"       Expected: {case.expected_citations}")
@@ -296,6 +329,32 @@ def run_evaluation(verbose: bool = False) -> dict:
     return metrics
 
 
+def show_database_stats():
+    """Show current database statistics."""
+    print("\n" + "=" * 60)
+    print("DATABASE STATISTICS")
+    print("=" * 60)
+
+    try:
+        for jurisdiction in ['NSW', 'QLD', 'FEDERAL']:
+            response = supabase.table('legislation_documents') \
+                .select('id', count='exact') \
+                .eq('jurisdiction', jurisdiction) \
+                .execute()
+            print(f"{jurisdiction}: {response.count} documents")
+
+        # Total chunks
+        response = supabase.table('legislation_chunks') \
+            .select('id', count='exact') \
+            .execute()
+        print(f"\nTotal chunks: {response.count}")
+
+    except Exception as e:
+        print(f"Error fetching stats: {e}")
+
+    print("=" * 60 + "\n")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Evaluate RAG retrieval quality")
     parser.add_argument(
@@ -303,9 +362,22 @@ def main():
         action="store_true",
         help="Show detailed output for each test case"
     )
+    parser.add_argument(
+        "--static", "-s",
+        action="store_true",
+        help="Use static test cases instead of generating from DB"
+    )
+    parser.add_argument(
+        "--stats",
+        action="store_true",
+        help="Show database statistics before running"
+    )
     args = parser.parse_args()
 
-    metrics = run_evaluation(verbose=args.verbose)
+    if args.stats:
+        show_database_stats()
+
+    metrics = run_evaluation(verbose=args.verbose, use_static=args.static)
 
     # Exit with error code if pass rate is below threshold
     if metrics["pass_rate"] < 0.7:

@@ -10,10 +10,15 @@ from PIL import Image
 
 from app.config import logger
 
+# Security: Resource limits to prevent DoS
+MAX_PDF_PAGES = 100
+MAX_IMAGE_DIMENSION = 4096  # pixels
+MAX_IMAGE_PIXELS = 20_000_000  # ~20MP, prevents decompression bombs
+
 
 def parse_pdf(content: bytes) -> str:
     """
-    Extract text from a PDF file.
+    Extract text from a PDF file with page limit.
 
     Args:
         content: Raw PDF file bytes
@@ -23,11 +28,21 @@ def parse_pdf(content: bytes) -> str:
     """
     try:
         reader = PdfReader(io.BytesIO(content))
+        num_pages = len(reader.pages)
+
+        # Limit pages to prevent DoS
+        if num_pages > MAX_PDF_PAGES:
+            logger.warning(f"PDF has {num_pages} pages, limiting to {MAX_PDF_PAGES}")
+
         text_parts = []
-        for page_num, page in enumerate(reader.pages, 1):
+        for page_num, page in enumerate(reader.pages[:MAX_PDF_PAGES], 1):
             page_text = page.extract_text()
             if page_text:
                 text_parts.append(f"--- Page {page_num} ---\n{page_text}")
+
+        if num_pages > MAX_PDF_PAGES:
+            text_parts.append(f"\n[Note: Document truncated. Showing first {MAX_PDF_PAGES} of {num_pages} pages]")
+
         return "\n\n".join(text_parts)
     except Exception as e:
         logger.error(f"PDF parsing failed: {e}")
@@ -55,7 +70,7 @@ def parse_docx(content: bytes) -> str:
 
 def parse_image_to_base64(content: bytes, mime_type: str = "image/png") -> str:
     """
-    Convert image to base64 for GPT-4o Vision.
+    Convert image to base64 for GPT-4o Vision with size limits.
 
     Args:
         content: Raw image file bytes
@@ -71,14 +86,27 @@ def parse_image_to_base64(content: bytes, mime_type: str = "image/png") -> str:
         # Re-open after verify (verify closes the file)
         img = Image.open(io.BytesIO(content))
 
+        # Security: Check dimensions to prevent decompression bombs
+        width, height = img.size
+        if width > MAX_IMAGE_DIMENSION or height > MAX_IMAGE_DIMENSION:
+            raise ValueError(f"Image dimensions too large. Maximum: {MAX_IMAGE_DIMENSION}x{MAX_IMAGE_DIMENSION}")
+
+        if width * height > MAX_IMAGE_PIXELS:
+            raise ValueError(f"Image has too many pixels. Maximum: {MAX_IMAGE_PIXELS}")
+
         # Convert to RGB if needed (for JPEG compatibility)
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
 
+        # Resize large images to save bandwidth
+        if width > 2048 or height > 2048:
+            img.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
+            logger.info(f"Resized image from {width}x{height} to {img.size}")
+
         # Encode to base64
         buffer = io.BytesIO()
         img_format = "PNG" if "png" in mime_type.lower() else "JPEG"
-        img.save(buffer, format=img_format)
+        img.save(buffer, format=img_format, quality=85)
         base64_str = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
         return f"data:{mime_type};base64,{base64_str}"

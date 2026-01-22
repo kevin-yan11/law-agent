@@ -11,6 +11,10 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// Security: File size limit (10MB)
+const MAX_FILE_SIZE_MB = 10;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
 interface FileUploadProps {
   onFileUploaded: (url: string, filename: string) => void;
   disabled?: boolean;
@@ -24,6 +28,15 @@ export function FileUpload({ onFileUploaded, disabled }: FileUploadProps) {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Security: Validate file size before upload
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      alert(`File too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.`);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      return;
+    }
 
     setIsUploading(true);
     setUploadedFile(null);
