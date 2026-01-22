@@ -57,6 +57,15 @@ python scripts/eval_rag.py --stats      # Show DB statistics first
 python scripts/eval_rag.py --static     # Use hardcoded test cases instead
 ```
 
+### Testing
+```bash
+cd backend
+conda activate law_agent
+pytest                                   # Run all tests
+pytest tests/test_url_fetcher.py -v     # Run specific test file
+pytest -k "ssrf" -v                      # Run tests matching pattern
+```
+
 ### Database
 Run SQL files in Supabase SQL Editor:
 - `database/setup.sql` - Initial schema and mock data
@@ -114,6 +123,7 @@ Files are uploaded to Supabase Storage (not backend memory) for persistence:
 ```
 backend/
 ├── main.py                 # FastAPI app, custom LangGraph, CopilotKit integration
+├── pytest.ini              # Pytest configuration
 ├── app/
 │   ├── config.py           # Environment variables, logging
 │   ├── db/supabase_client.py
@@ -129,6 +139,10 @@ backend/
 │   └── utils/
 │       ├── document_parser.py  # PDF, DOCX, image parsing
 │       └── url_fetcher.py      # Fetch documents from URLs
+├── tests/
+│   ├── conftest.py         # Shared fixtures
+│   ├── test_url_fetcher.py # SSRF protection tests
+│   └── test_lookup_law.py  # RAG tool tests
 ├── scripts/
 │   ├── ingest_corpus.py    # Hugging Face dataset ingestion (batch inserts)
 │   └── eval_rag.py         # RAG retrieval quality evaluation
