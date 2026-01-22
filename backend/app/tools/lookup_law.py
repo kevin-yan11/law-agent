@@ -63,10 +63,13 @@ def lookup_law(query: str, state: str = "VIC") -> str | list[dict]:
                 msg += f" in {state if not is_unsupported else 'Federal law'}"
             return msg + ". Try different keywords or check another jurisdiction."
 
-        # Fetch parent content for better context
+        # Batch fetch all parent contents (single query instead of N queries)
+        parent_contents = _get_parent_contents_batch(results)
+
         formatted_results = []
         for chunk in results:
-            parent_content = _get_parent_content(chunk)
+            parent_id = chunk.get("parent_chunk_id")
+            parent_content = parent_contents.get(parent_id) if parent_id else None
 
             result = {
                 "content": parent_content or chunk.get("content", ""),
@@ -119,47 +122,79 @@ async def _search_and_rerank(query: str, jurisdiction: str | None) -> list[dict]
     if not results:
         return []
 
-    # Rerank for final precision (top 5)
+    # Rerank for final precision
     reranked = await reranker.rerank(
         query=query,
         documents=results,
-        top_n=5
+        top_n=10  # Get more candidates before deduplication
     )
 
-    return reranked
+    # Deduplicate by parent chunk to ensure diversity
+    deduplicated = _deduplicate_by_parent(reranked)
+
+    return deduplicated[:5]  # Return top 5 unique parents
 
 
-def _get_parent_content(chunk: dict) -> str | None:
+def _deduplicate_by_parent(results: list[dict]) -> list[dict]:
     """
-    Fetch parent chunk content for fuller context.
+    Keep only the top-scoring chunk per parent/document.
 
-    When we retrieve a child chunk (small, precise), we often want
-    to return the parent chunk (larger, more context) to the user.
+    This ensures diversity in results - we don't want 3 chunks from
+    the same Act when we could show 3 different relevant Acts.
 
     Args:
-        chunk: The retrieved chunk dict
+        results: List of chunks, already sorted by score (highest first)
 
     Returns:
-        Parent chunk content if exists, None otherwise
+        Deduplicated list with one chunk per parent
     """
-    parent_id = chunk.get("parent_chunk_id")
+    seen_parents = set()
+    deduplicated = []
 
-    if not parent_id:
-        return None
+    for chunk in results:
+        # Use parent_chunk_id if exists, otherwise document_id (for parent-only chunks)
+        key = chunk.get("parent_chunk_id") or chunk.get("document_id")
+        if key and key not in seen_parents:
+            seen_parents.add(key)
+            deduplicated.append(chunk)
+        elif not key:
+            # No parent or document ID - include it anyway
+            deduplicated.append(chunk)
+
+    return deduplicated
+
+
+def _get_parent_contents_batch(chunks: list[dict]) -> dict[str, str]:
+    """
+    Fetch all parent chunk contents in a single batch query.
+
+    When we retrieve child chunks (small, precise), we often want
+    to return the parent chunks (larger, more context) to the user.
+    This function batches all parent lookups into one query to avoid N+1.
+
+    Args:
+        chunks: List of retrieved chunk dicts
+
+    Returns:
+        Dict mapping parent_chunk_id -> content
+    """
+    parent_ids = [c.get("parent_chunk_id") for c in chunks if c.get("parent_chunk_id")]
+
+    if not parent_ids:
+        return {}
 
     try:
         response = supabase.table("legislation_chunks") \
-            .select("content") \
-            .eq("id", parent_id) \
-            .single() \
+            .select("id, content") \
+            .in_("id", parent_ids) \
             .execute()
 
         if response.data:
-            return response.data.get("content")
+            return {row["id"]: row["content"] for row in response.data}
     except Exception as e:
-        logger.warning(f"Failed to fetch parent chunk {parent_id}: {e}")
+        logger.warning(f"Failed to batch fetch parent chunks: {e}")
 
-    return None
+    return {}
 
 
 # Keep backward compatibility - also export as function
