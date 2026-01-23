@@ -21,6 +21,14 @@ from app.agents.stages.legal_elements import (
     legal_elements_node,
     get_legal_elements_analyzer,
 )
+from app.agents.stages.case_precedent import (
+    case_precedent_node,
+    get_case_precedent_analyzer,
+)
+from app.agents.stages.risk_analysis import (
+    risk_analysis_node,
+    get_risk_analyzer,
+)
 
 __all__ = [
     # Stage 0: Safety Gate
@@ -39,4 +47,10 @@ __all__ = [
     # Stage 4: Legal Elements
     "legal_elements_node",
     "get_legal_elements_analyzer",
+    # Stage 5: Case Precedent
+    "case_precedent_node",
+    "get_case_precedent_analyzer",
+    # Stage 6: Risk Analysis
+    "risk_analysis_node",
+    "get_risk_analyzer",
 ]

@@ -238,8 +238,8 @@ Transforming the agent from a simple chat↔tools loop into an **8-stage profess
 | **Phase 1** | ✅ Complete | Safety gate foundation (adaptive_state, emergency_resources, safety_router, safety_gate, tests) |
 | **Phase 2** | ✅ Complete | Issue identification + complexity router + jurisdiction (23 tests) |
 | **Phase 3** | ✅ Complete | Complex path core - fact structuring, legal elements, element schemas (24 tests) |
-| **Phase 4** | ⏳ Pending | Case precedent + risk analysis (requires mock case data migration) |
-| **Phase 5** | ⏳ Pending | Strategy + full integration with main.py |
+| **Phase 4** | ✅ Complete | Case precedent + risk analysis with mock case database (24 tests) |
+| **Phase 5** | ⏳ Pending | Strategy + escalation brief + full integration with main.py |
 
 ### New File Structure (Adaptive Agent)
 ```
@@ -257,14 +257,15 @@ backend/app/agents/
 │   ├── jurisdiction.py         # ✅ Stage 2 - federal vs state law resolution
 │   ├── fact_structuring.py     # ✅ Stage 3 - timeline, parties, evidence extraction
 │   ├── legal_elements.py       # ✅ Stage 4 - element satisfaction + viability assessment
-│   ├── case_precedent.py       # ⏳ Stage 5 (Phase 4)
-│   ├── risk_analysis.py        # ⏳ Stage 6 (Phase 4)
+│   ├── case_precedent.py       # ✅ Stage 5 - case law search + relevance analysis
+│   ├── risk_analysis.py        # ✅ Stage 6 - risks, defences, counterfactuals
 │   ├── strategy.py             # ⏳ Stage 7 (Phase 5)
 │   └── escalation_brief.py     # ⏳ Stage 8 (Phase 5)
 └── schemas/
     ├── __init__.py             # ✅
     ├── emergency_resources.py  # ✅ Australian crisis hotlines by state/category
-    └── legal_elements.py       # ✅ Element schemas for tenancy, employment, family, consumer, criminal
+    ├── legal_elements.py       # ✅ Element schemas for tenancy, employment, family, consumer, criminal
+    └── case_precedents.py      # ✅ Mock case database for tenancy, employment, family, consumer
 ```
 
 ### Key Types (adaptive_state.py)
@@ -307,7 +308,8 @@ The complexity router uses fast heuristics before falling back to LLM:
 pytest tests/test_safety_gate.py -v            # 16 tests for Phase 1 (safety gate)
 pytest tests/test_phase2_classification.py -v  # 23 tests for Phase 2 (issue ID, complexity, jurisdiction)
 pytest tests/test_phase3_fact_elements.py -v   # 24 tests for Phase 3 (fact structuring, legal elements)
-pytest tests/test_safety_gate.py tests/test_phase2_classification.py tests/test_phase3_fact_elements.py -v  # All adaptive agent tests (63 total)
+pytest tests/test_phase4_precedent_risk.py -v  # 24 tests for Phase 4 (case precedent, risk analysis)
+pytest tests/test_safety_gate.py tests/test_phase2_classification.py tests/test_phase3_fact_elements.py tests/test_phase4_precedent_risk.py -v  # All adaptive agent tests (87 total)
 ```
 
 ### Enabling Adaptive Graph (Future)

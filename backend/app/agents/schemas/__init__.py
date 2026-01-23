@@ -8,6 +8,14 @@ from app.agents.schemas.legal_elements import (
     LegalAreaElements,
     ElementDefinition,
 )
+from app.agents.schemas.case_precedents import (
+    get_cases_by_area,
+    get_cases_by_subcategory,
+    search_cases_by_keywords,
+    get_case_by_name,
+    ALL_CASES,
+    MockCase,
+)
 
 __all__ = [
     # Emergency resources
@@ -19,4 +27,11 @@ __all__ = [
     "ELEMENT_SCHEMAS",
     "LegalAreaElements",
     "ElementDefinition",
+    # Case precedents
+    "get_cases_by_area",
+    "get_cases_by_subcategory",
+    "search_cases_by_keywords",
+    "get_case_by_name",
+    "ALL_CASES",
+    "MockCase",
 ]
