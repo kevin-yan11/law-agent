@@ -29,6 +29,14 @@ from app.agents.stages.risk_analysis import (
     risk_analysis_node,
     get_risk_analyzer,
 )
+from app.agents.stages.strategy import (
+    strategy_node,
+    get_strategy_recommender,
+)
+from app.agents.stages.escalation_brief import (
+    escalation_brief_node,
+    get_brief_generator,
+)
 
 __all__ = [
     # Stage 0: Safety Gate
@@ -53,4 +61,10 @@ __all__ = [
     # Stage 6: Risk Analysis
     "risk_analysis_node",
     "get_risk_analyzer",
+    # Stage 7: Strategy
+    "strategy_node",
+    "get_strategy_recommender",
+    # Stage 8: Escalation Brief
+    "escalation_brief_node",
+    "get_brief_generator",
 ]

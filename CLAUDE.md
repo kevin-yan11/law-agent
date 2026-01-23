@@ -204,7 +204,7 @@ npx shadcn@latest add <component-name>
 
 ---
 
-## Adaptive Agent Workflow (In Progress)
+## Adaptive Agent Workflow (Complete)
 
 ### Overview
 Transforming the agent from a simple chat↔tools loop into an **8-stage professional legal workflow** with **adaptive depth routing** - simple queries stay fast, complex queries get full analysis.
@@ -239,13 +239,13 @@ Transforming the agent from a simple chat↔tools loop into an **8-stage profess
 | **Phase 2** | ✅ Complete | Issue identification + complexity router + jurisdiction (23 tests) |
 | **Phase 3** | ✅ Complete | Complex path core - fact structuring, legal elements, element schemas (24 tests) |
 | **Phase 4** | ✅ Complete | Case precedent + risk analysis with mock case database (24 tests) |
-| **Phase 5** | ⏳ Pending | Strategy + escalation brief + full integration with main.py |
+| **Phase 5** | ✅ Complete | Strategy + escalation brief + adaptive graph orchestration (19 tests) |
 
 ### New File Structure (Adaptive Agent)
 ```
 backend/app/agents/
 ├── adaptive_state.py           # ✅ Extended TypedDict for all 8 stages
-├── adaptive_graph.py           # ⏳ Main orchestration graph (Phase 5)
+├── adaptive_graph.py           # ✅ Main orchestration graph with simple/complex paths
 ├── routers/
 │   ├── __init__.py             # ✅
 │   ├── safety_router.py        # ✅ High-risk detection (GPT-4o-mini)
@@ -259,8 +259,8 @@ backend/app/agents/
 │   ├── legal_elements.py       # ✅ Stage 4 - element satisfaction + viability assessment
 │   ├── case_precedent.py       # ✅ Stage 5 - case law search + relevance analysis
 │   ├── risk_analysis.py        # ✅ Stage 6 - risks, defences, counterfactuals
-│   ├── strategy.py             # ⏳ Stage 7 (Phase 5)
-│   └── escalation_brief.py     # ⏳ Stage 8 (Phase 5)
+│   ├── strategy.py             # ✅ Stage 7 - multiple pathways with pros/cons
+│   └── escalation_brief.py     # ✅ Stage 8 - structured lawyer handoff package
 └── schemas/
     ├── __init__.py             # ✅
     ├── emergency_resources.py  # ✅ Australian crisis hotlines by state/category
@@ -309,11 +309,12 @@ pytest tests/test_safety_gate.py -v            # 16 tests for Phase 1 (safety ga
 pytest tests/test_phase2_classification.py -v  # 23 tests for Phase 2 (issue ID, complexity, jurisdiction)
 pytest tests/test_phase3_fact_elements.py -v   # 24 tests for Phase 3 (fact structuring, legal elements)
 pytest tests/test_phase4_precedent_risk.py -v  # 24 tests for Phase 4 (case precedent, risk analysis)
-pytest tests/test_safety_gate.py tests/test_phase2_classification.py tests/test_phase3_fact_elements.py tests/test_phase4_precedent_risk.py -v  # All adaptive agent tests (87 total)
+pytest tests/test_phase5_strategy_brief.py -v  # 19 tests for Phase 5 (strategy, escalation brief, graph)
+pytest tests/test_safety_gate.py tests/test_phase2_classification.py tests/test_phase3_fact_elements.py tests/test_phase4_precedent_risk.py tests/test_phase5_strategy_brief.py -v  # All adaptive agent tests (106 total)
 ```
 
-### Enabling Adaptive Graph (Future)
-Once complete, enable via environment variable:
+### Enabling Adaptive Graph
+Enable the adaptive workflow via environment variable:
 ```bash
 USE_ADAPTIVE_GRAPH=true python main.py
 ```
