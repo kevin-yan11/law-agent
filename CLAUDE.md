@@ -95,9 +95,13 @@ BACKEND_URL=http://localhost:8000    # For production: set to deployed backend U
 ### RAG System (Advanced Retrieval)
 The `lookup_law` tool uses a hybrid retrieval pipeline:
 1. **Hybrid Search**: Vector similarity (pgvector) + PostgreSQL full-text search
-2. **RRF Fusion**: Reciprocal Rank Fusion merges results from both search methods
-3. **Reranking**: Optional Cohere rerank for final precision (falls back to RRF if not configured)
-4. **Parent-Child Chunks**: Child chunks (500 tokens) for precise retrieval, parent chunks (2000 tokens) for context
+2. **RRF Fusion**: Reciprocal Rank Fusion merges results (MIN_RRF_SCORE = 0.01 filters weak matches)
+3. **Reranking**: Cohere rerank with MIN_RELEVANCE_SCORE = 0.25 threshold (falls back to RRF if not configured)
+4. **Confidence Levels**: Results tagged as high (>0.6), medium (0.4-0.6), or low (0.25-0.4)
+5. **Quality-Aware Responses**: Warnings added when only low-confidence results found
+6. **Parent-Child Chunks**: Child chunks (500 tokens) for precise retrieval, parent chunks (2000 tokens) for context
+
+**Retry Logic**: Embedding API calls retry 3x with exponential backoff (1s, 2s, 4s delays)
 
 **Data Source**: Hugging Face `isaacus/open-australian-legal-corpus` (Primary Legislation only)
 **Supported Jurisdictions**: NSW, QLD, FEDERAL (no Victoria data in corpus)
@@ -109,7 +113,7 @@ The agent uses a **custom StateGraph** (not `create_react_agent`) to properly re
 - **Important**: AG-UI protocol double-serializes string values. Use `clean_context_value()` in main.py to strip extra quotes and unescape inner quotes.
 
 ### State-Based Legal Information
-Australian law varies by state. The `StateSelector` component lets users pick their state (VIC, NSW, QLD, etc.), which is passed to all tool calls automatically. For unsupported states (VIC, SA, WA, TAS, NT), the system falls back to Federal law.
+Australian law varies by state. The `StateSelector` component lets users pick their state (VIC, NSW, QLD, etc.), which is passed to all tool calls automatically. **All tools require the state parameter - there are no defaults** to prevent incorrect jurisdiction assumptions. For unsupported states (VIC, SA, WA, TAS, NT), the system falls back to Federal law.
 
 ### Document Upload Flow
 Files are uploaded to Supabase Storage (not backend memory) for persistence:
@@ -117,6 +121,17 @@ Files are uploaded to Supabase Storage (not backend memory) for persistence:
 2. Public URL shared with agent via `useCopilotReadable`
 3. Agent calls `analyze_document(document_url=...)`
 4. Tool fetches file from URL, parses it, returns text for agent to analyze
+
+## Production Features
+
+### Startup Validation
+Backend validates Supabase and OpenAI connections on startup. Server exits if either fails.
+
+### Rate Limiting
+`/copilotkit` endpoint limited to 30 requests/minute per IP address.
+
+### SSRF Protection
+Document fetcher only allows URLs from domains in `ALLOWED_DOCUMENT_HOSTS`.
 
 ## Backend Structure
 
@@ -179,7 +194,8 @@ The ingestion script uses batch inserts for chunks (all parent chunks in one INS
 ```
 frontend/
 ├── app/
-│   ├── page.tsx                # Main page with CopilotChat integration
+│   ├── page.tsx                # Landing page
+│   ├── chat/page.tsx           # Main chat interface with CopilotChat
 │   ├── layout.tsx              # Root layout with CopilotKit provider
 │   ├── globals.css             # Tailwind + shadcn CSS variables
 │   ├── components/
