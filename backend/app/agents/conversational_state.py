@@ -58,12 +58,12 @@ class ConversationalState(TypedDict):
 class ConversationalOutput(TypedDict):
     """Output schema - these fields are streamed to UI via AG-UI protocol.
 
-    This prevents internal state from being shown as raw JSON,
-    while still allowing quick_replies to be rendered in frontend
-    using useCoAgentStateRender hook.
+    The frontend accesses these via useCoAgent hook.
+    Note: The quick reply LLM call uses get_internal_llm_config to suppress
+    streaming, preventing raw JSON from appearing in the chat.
     """
 
     messages: Annotated[list[BaseMessage], operator.add]
-    quick_replies: Optional[list[str]]  # Suggested follow-up responses
-    suggest_brief: bool  # Whether to highlight brief generation option
-    suggest_lawyer: bool  # Whether to suggest finding a lawyer
+    quick_replies: Optional[list[str]]
+    suggest_brief: bool
+    suggest_lawyer: bool

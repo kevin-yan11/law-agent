@@ -12,6 +12,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.prebuilt import create_react_agent
 
 from app.agents.conversational_state import ConversationalState
+from app.agents.utils import get_internal_llm_config
 from app.tools.lookup_law import lookup_law
 from app.tools.find_lawyer import find_lawyer
 from app.config import logger
@@ -110,6 +111,9 @@ async def generate_quick_replies(
             content = msg.content if hasattr(msg, 'content') else str(msg)
             conversation += f"{role}: {content}\n"
 
+        # Use internal config to suppress streaming (prevents raw JSON in chat)
+        internal_config = get_internal_llm_config(config)
+
         llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
         structured_llm = llm.with_structured_output(QuickReplyAnalysis)
 
@@ -118,7 +122,7 @@ async def generate_quick_replies(
                 conversation=conversation,
                 response=response_content
             ),
-            config=config,
+            config=internal_config,
         )
 
         return result

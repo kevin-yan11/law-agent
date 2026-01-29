@@ -6,7 +6,7 @@ import { CopilotChat } from "@copilotkit/react-ui";
 import {
   useCopilotReadable,
   useCopilotChat,
-  useCoAgentStateRender,
+  useCoAgent,
 } from "@copilotkit/react-core";
 import { TextMessage, MessageRole } from "@copilotkit/runtime-client-gql";
 import { StateSelector } from "../components/StateSelector";
@@ -73,18 +73,18 @@ export default function ChatPage() {
     setUploadedDocument(null);
   };
 
-  // Render quick replies from agent state
+  // Access agent state for quick replies
   // The agent generates these suggestions after each response
-  useCoAgentStateRender({
+  const { state: agentState } = useCoAgent<{
+    quick_replies?: string[];
+    suggest_brief?: boolean;
+    suggest_lawyer?: boolean;
+  }>({
     name: "auslaw_agent",
-    render: ({ state }) => {
-      const quickReplies = state?.quick_replies as string[] | undefined;
-      if (!quickReplies || quickReplies.length === 0) {
-        return null;
-      }
-      return <QuickRepliesPanel replies={quickReplies} />;
-    },
   });
+
+  // Extract quick replies from agent state
+  const quickReplies = agentState?.quick_replies;
 
   // Dynamic initial message based on selected state
   const getInitialMessage = () => {
@@ -279,14 +279,18 @@ export default function ChatPage() {
       {/* Main Chat Area */}
       <main className="flex-1 flex flex-col min-w-0">
         {/* Add top padding on mobile for fixed header */}
-        <div className="flex-1 pt-14 lg:pt-0">
+        <div className="flex-1 pt-14 lg:pt-0 flex flex-col">
           <CopilotChat
-            className="h-full"
+            className="flex-1"
             labels={{
               title: "AusLaw AI",
               initial: getInitialMessage(),
             }}
           />
+          {/* Quick Replies from agent state */}
+          {quickReplies && quickReplies.length > 0 && (
+            <QuickRepliesPanel replies={quickReplies} />
+          )}
         </div>
       </main>
     </div>

@@ -113,6 +113,33 @@ The agent uses a **custom StateGraph** (not `create_react_agent`) to properly re
 
 This bug affects both `emit-messages` config keys (must set both `copilotkit:emit-messages` and `emit-messages`) and context string values.
 
+### Suppressing Internal LLM Streaming
+
+**Problem**: When making internal LLM calls (e.g., for classification, analysis, or generating quick replies), the AG-UI protocol streams their output as raw JSON to the chat UI. This appears during processing and disappears when complete, causing confusing UX.
+
+**Solution**: Use `get_internal_llm_config(config)` from `app/agents/utils/config.py` for ALL internal LLM calls that shouldn't be streamed to the user.
+
+```python
+from app.agents.utils import get_internal_llm_config
+
+async def my_node(state: State, config: RunnableConfig) -> dict:
+    # Use internal config to suppress streaming
+    internal_config = get_internal_llm_config(config)
+
+    # This LLM call won't stream to the chat UI
+    result = await llm.ainvoke(prompt, config=internal_config)
+```
+
+**When to use `get_internal_llm_config`**:
+- Safety classification LLM calls
+- Quick reply generation
+- Complexity routing decisions
+- Any structured output that shouldn't appear in chat
+
+**When NOT to use it**:
+- The main chat response (should stream to user)
+- Tool results that the user should see
+
 ### State-Based Legal Information
 Australian law varies by state. The `StateSelector` component lets users pick their state (VIC, NSW, QLD, etc.), which is passed to all tool calls automatically. For unsupported states (VIC, SA, WA, TAS, NT), the system falls back to Federal law.
 
@@ -419,3 +446,246 @@ python main.py
 # Adaptive mode (multi-stage pipeline)
 USE_ADAPTIVE_GRAPH=true python main.py
 ```
+
+---
+
+## Conversational Mode Implementation Progress
+
+### Phase Status
+
+| Phase | Status | Description |
+|-------|--------|-------------|
+| **Phase 1** | ✅ Complete | Basic conversational mode (fast graph, safety check, chat response) |
+| **Phase 2** | ✅ Complete | Quick replies (backend generation, frontend display via useCoAgent) |
+| **Phase 3** | ⏳ Not Started | Brief generation mode (user-triggered, info gathering, comprehensive brief) |
+
+### Phase 2 Implementation Details (Quick Replies)
+
+**Backend** (`chat_response.py`):
+- After generating chat response, calls `generate_quick_replies()` with gpt-4o-mini
+- Uses `get_internal_llm_config(config)` to suppress streaming (prevents raw JSON in chat)
+- Returns `quick_replies` in state output
+
+**Frontend** (`chat/page.tsx`):
+- Uses `useCoAgent` hook to access agent state (NOT `useCoAgentStateRender`)
+- Renders `QuickRepliesPanel` component when `quick_replies` exists
+- Clicking a quick reply sends it as user message via `useCopilotChat().appendMessage()`
+
+**Key Learning**: Quick replies use `get_internal_llm_config` because internal LLM calls stream raw JSON to the UI otherwise. The fix is documented in "Suppressing Internal LLM Streaming" section above.
+
+---
+
+## Phase 3: Brief Generation Mode (TODO)
+
+### Overview
+User-triggered brief generation that analyzes conversation history, asks follow-up questions if info is missing, then generates a comprehensive lawyer brief.
+
+### Architecture
+```
+USER CLICKS "Generate Brief" BUTTON
+         │
+         ▼
+┌─────────────────────────────────────────────┐
+│  BRIEF GENERATION MODE                      │
+│                                             │
+│  [1] Analyze conversation history           │
+│      - What legal issue is this?            │
+│      - What facts do we have?               │
+│      - What's missing?                      │
+│                                             │
+│  [2] If missing critical info:              │
+│      → Ask targeted questions               │
+│      → Wait for user responses              │
+│      → Loop until sufficient                │
+│                                             │
+│  [3] When ready:                            │
+│      → Generate comprehensive brief         │
+│      → Include: facts, issues, risks,       │
+│        questions for lawyer                 │
+│                                             │
+└─────────────────────────────────────────────┘
+```
+
+### Implementation Steps
+
+#### Step 3.1: Add State Fields for Brief Mode
+
+**Modify** `conversational_state.py`:
+```python
+class ConversationalState(TypedDict):
+    # ... existing fields ...
+
+    # Brief generation state (only used in brief mode)
+    brief_facts_collected: Optional[dict]      # Facts gathered from conversation
+    brief_missing_info: Optional[list[str]]    # What we still need
+    brief_info_complete: bool                  # Ready to generate?
+    brief_questions_asked: int                 # Track question count (max 3 rounds)
+```
+
+#### Step 3.2: Create Brief Generation Nodes
+
+**Create** `backend/app/agents/stages/brief_flow.py`:
+
+```python
+async def brief_check_info_node(state: ConversationalState, config: RunnableConfig) -> dict:
+    """Analyze conversation to determine what info we have and need."""
+    messages = state.get("messages", [])
+
+    # Use LLM to extract facts from conversation
+    facts = await extract_facts_from_conversation(messages, config)
+
+    # Determine legal area and required info
+    legal_area = facts.get("legal_area", "general")
+    required = get_required_info_for_brief(legal_area)
+
+    # Find gaps
+    missing = [r for r in required if r not in facts]
+
+    return {
+        "brief_facts_collected": facts,
+        "brief_missing_info": missing,
+        "brief_info_complete": len(missing) == 0
+    }
+
+async def brief_ask_questions_node(state: ConversationalState, config: RunnableConfig) -> dict:
+    """Ask targeted questions to fill info gaps."""
+    missing = state.get("brief_missing_info", [])
+    questions_asked = state.get("brief_questions_asked", 0)
+
+    # Generate natural questions for missing info (max 2 at a time)
+    questions = await generate_questions_for_missing(missing[:2], config)
+
+    return {
+        "messages": [AIMessage(content=questions)],
+        "brief_questions_asked": questions_asked + 1
+    }
+
+async def brief_generate_node(state: ConversationalState, config: RunnableConfig) -> dict:
+    """Generate the comprehensive lawyer brief."""
+    facts = state.get("brief_facts_collected", {})
+    messages = state.get("messages", [])
+    user_state = state.get("user_state")
+
+    brief = await generate_comprehensive_brief(facts, messages, user_state, config)
+
+    return {
+        "messages": [AIMessage(content=format_brief(brief))],
+        "mode": "chat"  # Return to chat mode after brief
+    }
+```
+
+#### Step 3.3: Update Graph with Brief Mode Routing
+
+**Modify** `conversational_graph.py`:
+
+```python
+def route_after_chat(state: ConversationalState) -> str:
+    """Route based on mode."""
+    if state.get("mode") == "brief":
+        return "brief_check_info"
+    return END
+
+def route_brief_info(state: ConversationalState) -> str:
+    """Route based on whether we have enough info."""
+    if state.get("brief_info_complete"):
+        return "brief_generate"
+    if state.get("brief_questions_asked", 0) >= 3:
+        return "brief_generate"  # Max 3 rounds of questions
+    return "brief_ask_questions"
+
+# Add nodes
+graph.add_node("brief_check_info", brief_check_info_node)
+graph.add_node("brief_ask_questions", brief_ask_questions_node)
+graph.add_node("brief_generate", brief_generate_node)
+
+# Add edges
+graph.add_conditional_edges("chat_response", route_after_chat, {
+    "brief_check_info": "brief_check_info",
+    END: END
+})
+graph.add_conditional_edges("brief_check_info", route_brief_info, {
+    "brief_generate": "brief_generate",
+    "brief_ask_questions": "brief_ask_questions"
+})
+graph.add_edge("brief_ask_questions", END)  # Wait for user response
+graph.add_edge("brief_generate", END)
+```
+
+#### Step 3.4: Add Frontend "Generate Brief" Button
+
+**Modify** `frontend/app/chat/page.tsx`:
+
+```tsx
+// Add to SidebarContent or bottom of chat
+<Card className="border-sky-200 bg-sky-50/50">
+  <CardHeader className="pb-2">
+    <CardTitle className="text-base font-medium flex items-center gap-2">
+      <FileText className="h-4 w-4 text-sky-700" />
+      Lawyer Brief
+    </CardTitle>
+    <CardDescription>
+      Generate a summary to share with a solicitor
+    </CardDescription>
+  </CardHeader>
+  <CardContent>
+    <Button
+      onClick={handleGenerateBrief}
+      className="w-full"
+      disabled={!hasConversation}
+    >
+      Generate Brief
+    </Button>
+  </CardContent>
+</Card>
+
+// Handler
+const handleGenerateBrief = async () => {
+  await appendMessage(
+    new TextMessage({
+      role: MessageRole.User,
+      content: "[GENERATE_BRIEF] Please prepare a lawyer brief based on our conversation.",
+    })
+  );
+};
+```
+
+#### Step 3.5: Detect Brief Trigger in Initialize
+
+**Modify** `conversational_graph.py` initialize node:
+
+```python
+def initialize_node(state: ConversationalState, config: RunnableConfig) -> dict:
+    # ... existing code ...
+
+    # Check for brief generation trigger
+    is_brief_mode = "[GENERATE_BRIEF]" in current_query
+
+    return {
+        # ... existing fields ...
+        "mode": "brief" if is_brief_mode else "chat",
+        "current_query": current_query.replace("[GENERATE_BRIEF]", "").strip(),
+    }
+```
+
+### Testing Plan
+
+```bash
+# Unit tests for brief mode
+pytest tests/test_brief_generation.py -v
+
+# Manual testing
+1. Have a conversation about a legal issue
+2. Click "Generate Brief" button
+3. Answer any follow-up questions
+4. Verify brief is generated with facts, issues, risks
+```
+
+### Files to Create/Modify
+
+| File | Action | Description |
+|------|--------|-------------|
+| `backend/app/agents/stages/brief_flow.py` | Create | Brief generation nodes |
+| `backend/app/agents/conversational_state.py` | Modify | Add brief state fields |
+| `backend/app/agents/conversational_graph.py` | Modify | Add brief routing & nodes |
+| `frontend/app/chat/page.tsx` | Modify | Add "Generate Brief" button |
+| `backend/tests/test_brief_generation.py` | Create | Tests for brief mode |
