@@ -1,10 +1,13 @@
 """Stage 1: Issue Identification - Classifies legal issues from user queries."""
 
+from typing import Optional
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableConfig
 
 from app.agents.adaptive_state import AdaptiveAgentState, LegalIssue, IssueClassification
+from app.agents.utils import get_internal_llm_config
 from app.config import logger
 
 
@@ -121,22 +124,32 @@ class IssueIdentifier:
             IssueIdentificationOutput
         )
 
-    async def identify(self, state: AdaptiveAgentState) -> IssueClassification:
+    async def identify(
+        self,
+        state: AdaptiveAgentState,
+        config: Optional[RunnableConfig] = None,
+    ) -> IssueClassification:
         """
         Identify legal issues from the user's query.
 
         Args:
             state: Current agent state with query and context
+            config: LangGraph config to customize for internal LLM calls
 
         Returns:
             IssueClassification with primary issue, secondary issues, and complexity score
         """
         try:
-            result = await self.chain.ainvoke({
-                "query": state.get("current_query", ""),
-                "user_state": state.get("user_state") or "Unknown",
-                "has_document": "Yes" if state.get("uploaded_document_url") else "No",
-            })
+            # Use internal config to prevent streaming JSON to frontend
+            internal_config = get_internal_llm_config(config)
+            result = await self.chain.ainvoke(
+                {
+                    "query": state.get("current_query", ""),
+                    "user_state": state.get("user_state") or "Unknown",
+                    "has_document": "Yes" if state.get("uploaded_document_url") else "No",
+                },
+                config=internal_config,
+            )
 
             # Build primary issue
             primary_issue: LegalIssue = {
@@ -202,12 +215,16 @@ def get_issue_identifier() -> IssueIdentifier:
     return _issue_identifier
 
 
-async def issue_identification_node(state: AdaptiveAgentState) -> dict:
+async def issue_identification_node(state: AdaptiveAgentState, config: RunnableConfig) -> dict:
     """
     Stage 1: Issue identification node.
 
     Classifies the user's query into legal areas and assesses complexity.
     This determines whether to use the simple or complex analysis path.
+
+    Args:
+        state: Current agent state
+        config: LangGraph config for controlling LLM streaming
 
     Returns:
         dict with issue_classification and updated stage tracking
@@ -215,7 +232,7 @@ async def issue_identification_node(state: AdaptiveAgentState) -> dict:
     logger.info("Stage 1: Issue Identification")
 
     identifier = get_issue_identifier()
-    classification = await identifier.identify(state)
+    classification = await identifier.identify(state, config)
 
     stages_completed = state.get("stages_completed", []).copy()
     stages_completed.append("issue_identification")

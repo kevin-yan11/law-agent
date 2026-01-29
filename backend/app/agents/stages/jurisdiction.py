@@ -1,10 +1,13 @@
 """Stage 2: Jurisdiction Resolution - Determines applicable laws and forums."""
 
+from typing import Optional
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableConfig
 
 from app.agents.adaptive_state import AdaptiveAgentState, JurisdictionResult
+from app.agents.utils import get_internal_llm_config
 from app.config import logger
 
 
@@ -151,12 +154,17 @@ class JurisdictionResolver:
         # Need LLM for complex cases
         return None
 
-    async def resolve(self, state: AdaptiveAgentState) -> JurisdictionResult:
+    async def resolve(
+        self,
+        state: AdaptiveAgentState,
+        config: Optional[RunnableConfig] = None,
+    ) -> JurisdictionResult:
         """
         Resolve applicable jurisdictions for the legal matter.
 
         Args:
             state: Current agent state with query and issue classification
+            config: LangGraph config to customize for internal LLM calls
 
         Returns:
             JurisdictionResult with applicable jurisdictions
@@ -178,12 +186,17 @@ class JurisdictionResolver:
 
         # Use LLM for complex cases
         try:
-            result = await self.chain.ainvoke({
-                "user_state": user_state or "Not specified",
-                "legal_area": legal_area,
-                "sub_category": sub_category,
-                "query": state.get("current_query", ""),
-            })
+            # Use internal config to prevent streaming JSON to frontend
+            internal_config = get_internal_llm_config(config)
+            result = await self.chain.ainvoke(
+                {
+                    "user_state": user_state or "Not specified",
+                    "legal_area": legal_area,
+                    "sub_category": sub_category,
+                    "query": state.get("current_query", ""),
+                },
+                config=internal_config,
+            )
 
             # Validate and normalize jurisdiction
             primary = result.primary_jurisdiction.upper()
@@ -233,12 +246,16 @@ def get_jurisdiction_resolver() -> JurisdictionResolver:
     return _jurisdiction_resolver
 
 
-async def jurisdiction_node(state: AdaptiveAgentState) -> dict:
+async def jurisdiction_node(state: AdaptiveAgentState, config: RunnableConfig) -> dict:
     """
     Stage 2: Jurisdiction resolution node.
 
     Determines which Australian jurisdiction(s) apply to the legal matter.
     This affects which legislation will be searched in RAG.
+
+    Args:
+        state: Current agent state
+        config: LangGraph config for controlling LLM streaming
 
     Returns:
         dict with jurisdiction_result and updated stage tracking
@@ -246,7 +263,7 @@ async def jurisdiction_node(state: AdaptiveAgentState) -> dict:
     logger.info("Stage 2: Jurisdiction Resolution")
 
     resolver = get_jurisdiction_resolver()
-    jurisdiction_result = await resolver.resolve(state)
+    jurisdiction_result = await resolver.resolve(state, config)
 
     stages_completed = state.get("stages_completed", []).copy()
     stages_completed.append("jurisdiction")

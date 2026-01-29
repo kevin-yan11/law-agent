@@ -1,9 +1,10 @@
 """Stage 3: Fact Structuring - Extracts timeline, parties, and evidence from user queries."""
 
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from typing import Literal, Optional
+from langchain_core.runnables import RunnableConfig
 
 from app.agents.adaptive_state import (
     AdaptiveAgentState,
@@ -12,6 +13,7 @@ from app.agents.adaptive_state import (
     Party,
     Evidence,
 )
+from app.agents.utils import get_internal_llm_config
 from app.config import logger
 
 
@@ -152,12 +154,17 @@ class FactStructurer:
             FactStructuringOutput
         )
 
-    async def structure_facts(self, state: AdaptiveAgentState) -> FactStructure:
+    async def structure_facts(
+        self,
+        state: AdaptiveAgentState,
+        config: Optional[RunnableConfig] = None,
+    ) -> FactStructure:
         """
         Extract and structure facts from the user's query.
 
         Args:
             state: Current agent state with query and issue classification
+            config: LangGraph config to customize for internal LLM calls
 
         Returns:
             FactStructure with timeline, parties, evidence, key facts, and gaps
@@ -181,14 +188,19 @@ class FactStructurer:
                     )
             issue_context = "\n".join(issue_context_parts) if issue_context_parts else "No prior classification"
 
-            result = await self.chain.ainvoke({
-                "query": state.get("current_query", ""),
-                "legal_area": primary.get("area", "unknown"),
-                "sub_category": primary.get("sub_category", "general"),
-                "user_state": state.get("user_state") or "Unknown",
-                "has_document": "Yes" if state.get("uploaded_document_url") else "No",
-                "issue_context": issue_context,
-            })
+            # Use internal config to prevent streaming JSON to frontend
+            internal_config = get_internal_llm_config(config)
+            result = await self.chain.ainvoke(
+                {
+                    "query": state.get("current_query", ""),
+                    "legal_area": primary.get("area", "unknown"),
+                    "sub_category": primary.get("sub_category", "general"),
+                    "user_state": state.get("user_state") or "Unknown",
+                    "has_document": "Yes" if state.get("uploaded_document_url") else "No",
+                    "issue_context": issue_context,
+                },
+                config=internal_config,
+            )
 
             # Convert Pydantic models to TypedDicts
             timeline: list[TimelineEvent] = [
@@ -267,7 +279,7 @@ def get_fact_structurer() -> FactStructurer:
     return _fact_structurer
 
 
-async def fact_structuring_node(state: AdaptiveAgentState) -> dict:
+async def fact_structuring_node(state: AdaptiveAgentState, config: RunnableConfig) -> dict:
     """
     Stage 3: Fact structuring node.
 
@@ -277,13 +289,17 @@ async def fact_structuring_node(state: AdaptiveAgentState) -> dict:
     This stage runs only on the COMPLEX path, after issue identification and
     jurisdiction resolution.
 
+    Args:
+        state: Current agent state
+        config: LangGraph config for controlling LLM streaming
+
     Returns:
         dict with fact_structure and updated stage tracking
     """
     logger.info("Stage 3: Fact Structuring")
 
     structurer = get_fact_structurer()
-    fact_structure = await structurer.structure_facts(state)
+    fact_structure = await structurer.structure_facts(state, config)
 
     stages_completed = state.get("stages_completed", []).copy()
     stages_completed.append("fact_structuring")

@@ -1,9 +1,10 @@
 """Stage 5: Case Precedent - Identifies relevant case law and outcome patterns."""
 
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from typing import Literal
+from langchain_core.runnables import RunnableConfig
 
 from app.agents.adaptive_state import (
     AdaptiveAgentState,
@@ -15,6 +16,7 @@ from app.agents.schemas.case_precedents import (
     get_cases_by_subcategory,
     MockCase,
 )
+from app.agents.utils import get_internal_llm_config
 from app.config import logger
 
 
@@ -188,12 +190,17 @@ class CasePrecedentAnalyzer:
 
         return "\n".join(parts)
 
-    async def analyze_precedents(self, state: AdaptiveAgentState) -> PrecedentAnalysis:
+    async def analyze_precedents(
+        self,
+        state: AdaptiveAgentState,
+        config: Optional[RunnableConfig] = None,
+    ) -> PrecedentAnalysis:
         """
         Analyze relevant case precedents for the current matter.
 
         Args:
             state: Current agent state with issue, facts, and elements analysis
+            config: LangGraph config to customize for internal LLM calls
 
         Returns:
             PrecedentAnalysis with matching cases and outcome patterns
@@ -232,14 +239,19 @@ class CasePrecedentAnalyzer:
             elements_summary = self._format_elements_summary(state)
             key_facts_str = "\n".join(f"- {f}" for f in key_facts) if key_facts else "No key facts identified"
 
-            result = await self.chain.ainvoke({
-                "legal_area": legal_area,
-                "sub_category": sub_category,
-                "jurisdiction": primary_jurisdiction,
-                "key_facts": key_facts_str,
-                "elements_summary": elements_summary,
-                "cases_text": cases_text,
-            })
+            # Use internal config to prevent streaming JSON to frontend
+            internal_config = get_internal_llm_config(config)
+            result = await self.chain.ainvoke(
+                {
+                    "legal_area": legal_area,
+                    "sub_category": sub_category,
+                    "jurisdiction": primary_jurisdiction,
+                    "key_facts": key_facts_str,
+                    "elements_summary": elements_summary,
+                    "cases_text": cases_text,
+                },
+                config=internal_config,
+            )
 
             # Convert to TypedDicts
             matching_cases: list[CasePrecedent] = [
@@ -293,7 +305,7 @@ def get_case_precedent_analyzer() -> CasePrecedentAnalyzer:
     return _case_precedent_analyzer
 
 
-async def case_precedent_node(state: AdaptiveAgentState) -> dict:
+async def case_precedent_node(state: AdaptiveAgentState, config: RunnableConfig) -> dict:
     """
     Stage 5: Case precedent analysis node.
 
@@ -304,13 +316,17 @@ async def case_precedent_node(state: AdaptiveAgentState) -> dict:
 
     This stage runs only on the COMPLEX path, after legal elements mapping.
 
+    Args:
+        state: Current agent state
+        config: LangGraph config for controlling LLM streaming
+
     Returns:
         dict with precedent_analysis and updated stage tracking
     """
     logger.info("Stage 5: Case Precedent Analysis")
 
     analyzer = get_case_precedent_analyzer()
-    precedent_analysis = await analyzer.analyze_precedents(state)
+    precedent_analysis = await analyzer.analyze_precedents(state, config)
 
     stages_completed = state.get("stages_completed", []).copy()
     stages_completed.append("case_precedent")

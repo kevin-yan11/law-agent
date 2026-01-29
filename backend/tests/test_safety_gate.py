@@ -177,7 +177,7 @@ class TestSafetyGateNode:
                 "stages_completed": []
             }
 
-            result = await safety_gate_node(state)
+            result = await safety_gate_node(state, {})
 
             assert result["safety_assessment"] == mock_assessment
             assert result["current_stage"] == "safety_gate"

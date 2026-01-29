@@ -1,15 +1,17 @@
 """Stage 7: Strategy Recommendation - Generates strategic pathways with pros/cons."""
 
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from typing import Literal
+from langchain_core.runnables import RunnableConfig
 
 from app.agents.adaptive_state import (
     AdaptiveAgentState,
     StrategyRecommendation,
     StrategyOption,
 )
+from app.agents.utils import get_internal_llm_config
 from app.config import logger
 
 
@@ -230,12 +232,17 @@ class StrategyRecommender:
         else:
             return "plaintiff/applicant (pursuing action against other party)"
 
-    async def recommend_strategy(self, state: AdaptiveAgentState) -> StrategyRecommendation:
+    async def recommend_strategy(
+        self,
+        state: AdaptiveAgentState,
+        config: Optional[RunnableConfig] = None,
+    ) -> StrategyRecommendation:
         """
         Generate strategic recommendations based on all previous analysis.
 
         Args:
             state: Current agent state with all previous stage outputs
+            config: LangGraph config to customize for internal LLM calls
 
         Returns:
             StrategyRecommendation with recommended and alternative strategies
@@ -260,19 +267,24 @@ class StrategyRecommender:
             risk_level = risk_assessment.get("overall_risk_level", "unknown")
             time_sensitivity = risk_assessment.get("time_sensitivity") or "No specific time constraints identified"
 
-            result = await self.chain.ainvoke({
-                "legal_area": legal_area,
-                "sub_category": sub_category,
-                "jurisdiction": primary_jurisdiction,
-                "narrative_summary": narrative_summary,
-                "key_facts": self._format_key_facts(state),
-                "viability": viability,
-                "risk_level": risk_level,
-                "risks_summary": self._format_risks_summary(state),
-                "precedent_summary": self._format_precedent_summary(state),
-                "time_sensitivity": time_sensitivity,
-                "user_position": self._determine_user_position(state),
-            })
+            # Use internal config to prevent streaming JSON to frontend
+            internal_config = get_internal_llm_config(config)
+            result = await self.chain.ainvoke(
+                {
+                    "legal_area": legal_area,
+                    "sub_category": sub_category,
+                    "jurisdiction": primary_jurisdiction,
+                    "narrative_summary": narrative_summary,
+                    "key_facts": self._format_key_facts(state),
+                    "viability": viability,
+                    "risk_level": risk_level,
+                    "risks_summary": self._format_risks_summary(state),
+                    "precedent_summary": self._format_precedent_summary(state),
+                    "time_sensitivity": time_sensitivity,
+                    "user_position": self._determine_user_position(state),
+                },
+                config=internal_config,
+            )
 
             # Convert to TypedDicts
             def option_to_typed_dict(option: StrategyOptionOutput) -> StrategyOption:
@@ -353,7 +365,7 @@ def get_strategy_recommender() -> StrategyRecommender:
     return _strategy_recommender
 
 
-async def strategy_node(state: AdaptiveAgentState) -> dict:
+async def strategy_node(state: AdaptiveAgentState, config: RunnableConfig) -> dict:
     """
     Stage 7: Strategy recommendation node.
 
@@ -364,13 +376,17 @@ async def strategy_node(state: AdaptiveAgentState) -> dict:
     This stage runs on both SIMPLE (abbreviated) and COMPLEX (full) paths,
     but with different depths of analysis available.
 
+    Args:
+        state: Current agent state
+        config: LangGraph config for controlling LLM streaming
+
     Returns:
         dict with strategy_recommendation and updated stage tracking
     """
     logger.info("Stage 7: Strategy Recommendation")
 
     recommender = get_strategy_recommender()
-    strategy = await recommender.recommend_strategy(state)
+    strategy = await recommender.recommend_strategy(state, config)
 
     stages_completed = state.get("stages_completed", []).copy()
     stages_completed.append("strategy")

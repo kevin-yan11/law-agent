@@ -321,7 +321,7 @@ class TestFactStructuringNode:
                 "stages_completed": ["safety_gate", "issue_identification", "jurisdiction"],
             }
 
-            result = await fact_structuring_node(state)
+            result = await fact_structuring_node(state, {})
 
             assert result["fact_structure"] == mock_fact_structure
             assert "fact_structuring" in result["stages_completed"]
@@ -657,7 +657,7 @@ class TestLegalElementsNode:
                 "stages_completed": ["safety_gate", "issue_identification", "jurisdiction", "fact_structuring"],
             }
 
-            result = await legal_elements_node(state)
+            result = await legal_elements_node(state, {})
 
             assert result["elements_analysis"] == mock_analysis
             assert "legal_elements" in result["stages_completed"]
@@ -693,7 +693,7 @@ class TestPhase3StateFlow:
                 "stages_completed": ["safety_gate", "issue_identification", "jurisdiction"],
             }
 
-            await fact_structuring_node(state)
+            await fact_structuring_node(state, {})
 
             # Verify structure_facts received full state
             mock_structurer.structure_facts.assert_called_once()
@@ -733,7 +733,7 @@ class TestPhase3StateFlow:
                 "stages_completed": ["safety_gate", "issue_identification", "jurisdiction", "fact_structuring"],
             }
 
-            await legal_elements_node(state)
+            await legal_elements_node(state, {})
 
             # Verify analyze_elements received state with fact_structure
             mock_analyzer.analyze_elements.assert_called_once()

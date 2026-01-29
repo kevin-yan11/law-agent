@@ -1,12 +1,14 @@
 """Safety router for detecting high-risk legal situations."""
 
-from typing import Literal
+from typing import Optional
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableConfig
 
 from app.agents.adaptive_state import SafetyAssessment
 from app.agents.schemas.emergency_resources import get_resources_for_risk
+from app.agents.utils import get_internal_llm_config
 from app.config import logger
 
 
@@ -78,22 +80,30 @@ class SafetyRouter:
         self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
         self.chain = SAFETY_PROMPT | self.llm.with_structured_output(SafetyClassification)
 
-    async def assess(self, query: str, user_state: str | None) -> SafetyAssessment:
+    async def assess(
+        self,
+        query: str,
+        user_state: str | None,
+        config: Optional[RunnableConfig] = None,
+    ) -> SafetyAssessment:
         """
         Assess a query for high-risk indicators.
 
         Args:
             query: The user's message/question
             user_state: Australian state/territory code (e.g., "NSW", "VIC")
+            config: LangGraph config to customize for internal LLM calls
 
         Returns:
             SafetyAssessment with risk level, category, and recommended resources
         """
         try:
-            result = await self.chain.ainvoke({
-                "query": query,
-                "user_state": user_state or "Unknown",
-            })
+            # Use internal config to prevent streaming JSON to frontend
+            internal_config = get_internal_llm_config(config)
+            result = await self.chain.ainvoke(
+                {"query": query, "user_state": user_state or "Unknown"},
+                config=internal_config,
+            )
 
             # Get relevant resources if high-risk
             resources = []

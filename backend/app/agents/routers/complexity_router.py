@@ -1,11 +1,13 @@
 """Complexity router for adaptive depth - routes queries to simple or complex paths."""
 
-from typing import Literal
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableConfig
 
 from app.agents.adaptive_state import AdaptiveAgentState
+from app.agents.utils import get_internal_llm_config
 from app.config import logger
 
 
@@ -198,12 +200,17 @@ class ComplexityRouter:
             ComplexityClassification
         )
 
-    async def classify(self, state: AdaptiveAgentState) -> Literal["simple", "complex"]:
+    async def classify(
+        self,
+        state: AdaptiveAgentState,
+        config: Optional[RunnableConfig] = None,
+    ) -> Literal["simple", "complex"]:
         """
         Classify query complexity using heuristics first, LLM for uncertain cases.
 
         Args:
             state: Current agent state with query and issue classification
+            config: LangGraph config to customize for internal LLM calls
 
         Returns:
             "simple" or "complex"
@@ -231,12 +238,17 @@ class ComplexityRouter:
                 )
                 complexity_score = str(issue_classification.get("complexity_score", "Unknown"))
 
-            result = await self.chain.ainvoke({
-                "query": state.get("current_query", ""),
-                "issue_summary": issue_summary,
-                "has_document": "Yes" if state.get("uploaded_document_url") else "No",
-                "complexity_score": complexity_score,
-            })
+            # Use internal config to prevent streaming JSON to frontend
+            internal_config = get_internal_llm_config(config)
+            result = await self.chain.ainvoke(
+                {
+                    "query": state.get("current_query", ""),
+                    "issue_summary": issue_summary,
+                    "has_document": "Yes" if state.get("uploaded_document_url") else "No",
+                    "complexity_score": complexity_score,
+                },
+                config=internal_config,
+            )
 
             logger.info(
                 f"Complexity classification: {result.path} "
@@ -262,7 +274,10 @@ def get_complexity_router() -> ComplexityRouter:
     return _complexity_router
 
 
-async def route_by_complexity(state: AdaptiveAgentState) -> Literal["simple", "complex"]:
+async def route_by_complexity(
+    state: AdaptiveAgentState,
+    config: Optional[RunnableConfig] = None,
+) -> Literal["simple", "complex"]:
     """
     Route to simple or complex path based on complexity analysis.
 
@@ -270,9 +285,10 @@ async def route_by_complexity(state: AdaptiveAgentState) -> Literal["simple", "c
 
     Args:
         state: Current agent state
+        config: LangGraph config to customize for internal LLM calls
 
     Returns:
         "simple" or "complex"
     """
     router = get_complexity_router()
-    return await router.classify(state)
+    return await router.classify(state, config)

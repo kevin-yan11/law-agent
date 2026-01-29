@@ -26,15 +26,17 @@ Architecture:
 
 import re
 import uuid
-from typing import Literal
+from typing import Literal, Optional
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 
-from app.agents.adaptive_state import AdaptiveAgentState, RoutingDecision
+from app.agents.adaptive_state import AdaptiveAgentState, AdaptiveAgentOutput, RoutingDecision
+from app.agents.utils import get_internal_llm_config
 from app.config import logger
 
 
@@ -119,7 +121,6 @@ from app.agents.stages import (
 from app.agents.stages.strategy import strategy_node
 from app.agents.stages.escalation_brief import escalation_brief_node
 from app.agents.routers.complexity_router import route_by_complexity
-from app.config import logger
 
 
 # ============================================
@@ -219,7 +220,11 @@ class ResponseGenerator:
         self.simple_chain = SIMPLE_RESPONSE_PROMPT | self.llm
         self.complex_chain = COMPLEX_RESPONSE_PROMPT | self.llm
 
-    async def generate_simple_response(self, state: AdaptiveAgentState) -> str:
+    async def generate_simple_response(
+        self,
+        state: AdaptiveAgentState,
+        config: Optional[RunnableConfig] = None,
+    ) -> str:
         """Generate response for simple path."""
         issue = state.get("issue_classification", {})
         primary = issue.get("primary_issue", {})
@@ -231,19 +236,28 @@ class ResponseGenerator:
         immediate_actions = strategy.get("immediate_actions", [])
         decision_factors = strategy.get("decision_factors", [])
 
-        result = await self.simple_chain.ainvoke({
-            "legal_area": primary.get("area", "general"),
-            "jurisdiction": jurisdiction.get("primary_jurisdiction", "Australian"),
-            "issue_summary": primary.get("description", "Legal matter"),
-            "strategy_summary": f"{recommended.get('name', 'N/A')}: {recommended.get('description', 'N/A')}",
-            "immediate_actions": "\n".join(f"- {a}" for a in immediate_actions) or "No specific actions identified",
-            "decision_factors": "\n".join(f"- {f}" for f in decision_factors) or "Consider seeking professional advice",
-            "query": state.get("current_query", ""),
-        })
+        # Use internal config to prevent streaming JSON to frontend
+        internal_config = get_internal_llm_config(config)
+        result = await self.simple_chain.ainvoke(
+            {
+                "legal_area": primary.get("area", "general"),
+                "jurisdiction": jurisdiction.get("primary_jurisdiction", "Australian"),
+                "issue_summary": primary.get("description", "Legal matter"),
+                "strategy_summary": f"{recommended.get('name', 'N/A')}: {recommended.get('description', 'N/A')}",
+                "immediate_actions": "\n".join(f"- {a}" for a in immediate_actions) or "No specific actions identified",
+                "decision_factors": "\n".join(f"- {f}" for f in decision_factors) or "Consider seeking professional advice",
+                "query": state.get("current_query", ""),
+            },
+            config=internal_config,
+        )
 
         return result.content
 
-    async def generate_complex_response(self, state: AdaptiveAgentState) -> str:
+    async def generate_complex_response(
+        self,
+        state: AdaptiveAgentState,
+        config: Optional[RunnableConfig] = None,
+    ) -> str:
         """Generate response for complex path."""
         issue = state.get("issue_classification", {})
         primary = issue.get("primary_issue", {})
@@ -285,24 +299,29 @@ class ResponseGenerator:
         if alternatives:
             alternatives_summary = "\n".join(f"- {a.get('name', 'N/A')}: {a.get('description', 'N/A')[:100]}" for a in alternatives[:3])
 
-        result = await self.complex_chain.ainvoke({
-            "legal_area": primary.get("area", "general"),
-            "sub_category": primary.get("sub_category", "general"),
-            "jurisdiction": jurisdiction.get("primary_jurisdiction", "Australian"),
-            "narrative_summary": fact_structure.get("narrative_summary", "No summary available"),
-            "key_facts": "\n".join(f"- {f}" for f in key_facts[:10]) or "No key facts identified",
-            "viability": elements.get("viability_assessment", "unknown"),
-            "elements_status": f"{elements.get('elements_satisfied', 0)}/{elements.get('elements_total', 0)}",
-            "applicable_law": elements.get("applicable_law", "Not determined"),
-            "risk_level": risk.get("overall_risk_level", "unknown"),
-            "risks": risks_summary,
-            "time_sensitivity": risk.get("time_sensitivity") or "No specific deadlines identified",
-            "precedent_summary": precedent_summary,
-            "strategy_summary": f"**{recommended.get('name', 'N/A')}**: {recommended.get('description', 'N/A')}\n- Success likelihood: {recommended.get('success_likelihood', 'N/A')}\n- Estimated cost: {recommended.get('estimated_cost', 'N/A')}\n- Timeline: {recommended.get('estimated_timeline', 'N/A')}",
-            "alternatives": alternatives_summary,
-            "immediate_actions": "\n".join(f"- {a}" for a in immediate_actions) or "No specific actions identified",
-            "query": state.get("current_query", ""),
-        })
+        # Use internal config to prevent streaming JSON to frontend
+        internal_config = get_internal_llm_config(config)
+        result = await self.complex_chain.ainvoke(
+            {
+                "legal_area": primary.get("area", "general"),
+                "sub_category": primary.get("sub_category", "general"),
+                "jurisdiction": jurisdiction.get("primary_jurisdiction", "Australian"),
+                "narrative_summary": fact_structure.get("narrative_summary", "No summary available"),
+                "key_facts": "\n".join(f"- {f}" for f in key_facts[:10]) or "No key facts identified",
+                "viability": elements.get("viability_assessment", "unknown"),
+                "elements_status": f"{elements.get('elements_satisfied', 0)}/{elements.get('elements_total', 0)}",
+                "applicable_law": elements.get("applicable_law", "Not determined"),
+                "risk_level": risk.get("overall_risk_level", "unknown"),
+                "risks": risks_summary,
+                "time_sensitivity": risk.get("time_sensitivity") or "No specific deadlines identified",
+                "precedent_summary": precedent_summary,
+                "strategy_summary": f"**{recommended.get('name', 'N/A')}**: {recommended.get('description', 'N/A')}\n- Success likelihood: {recommended.get('success_likelihood', 'N/A')}\n- Estimated cost: {recommended.get('estimated_cost', 'N/A')}\n- Timeline: {recommended.get('estimated_timeline', 'N/A')}",
+                "alternatives": alternatives_summary,
+                "immediate_actions": "\n".join(f"- {a}" for a in immediate_actions) or "No specific actions identified",
+                "query": state.get("current_query", ""),
+            },
+            config=internal_config,
+        )
 
         return result.content
 
@@ -356,9 +375,9 @@ async def initialize_node(state: AdaptiveAgentState) -> dict:
     }
 
 
-async def complexity_routing_node(state: AdaptiveAgentState) -> dict:
+async def complexity_routing_node(state: AdaptiveAgentState, config: RunnableConfig) -> dict:
     """Determine whether to use simple or complex path."""
-    complexity = await route_by_complexity(state)
+    complexity = await route_by_complexity(state, config)
 
     routing: RoutingDecision = {
         "path": complexity,
@@ -390,12 +409,12 @@ def route_by_path(state: AdaptiveAgentState) -> Literal["simple", "complex"]:
     return routing.get("path", "simple")
 
 
-async def simple_response_node(state: AdaptiveAgentState) -> dict:
+async def simple_response_node(state: AdaptiveAgentState, config: RunnableConfig) -> dict:
     """Generate response for simple path."""
     logger.info("Generating simple path response")
 
     generator = get_response_generator()
-    response = await generator.generate_simple_response(state)
+    response = await generator.generate_simple_response(state, config)
 
     # Add disclaimer
     response += "\n\n---\n\n_This is general information, not legal advice. Please consult a qualified lawyer for your specific situation._"
@@ -411,12 +430,12 @@ async def simple_response_node(state: AdaptiveAgentState) -> dict:
     }
 
 
-async def complex_response_node(state: AdaptiveAgentState) -> dict:
+async def complex_response_node(state: AdaptiveAgentState, config: RunnableConfig) -> dict:
     """Generate response for complex path."""
     logger.info("Generating complex path response")
 
     generator = get_response_generator()
-    response = await generator.generate_complex_response(state)
+    response = await generator.generate_complex_response(state, config)
 
     # Add disclaimer
     response += "\n\n---\n\n_This is general information, not legal advice. For your specific situation, consider consulting a qualified lawyer. You can use the 'Find Lawyer' feature to search for specialists in your area._"
@@ -442,7 +461,8 @@ async def complex_response_node(state: AdaptiveAgentState) -> dict:
 
 def build_adaptive_graph():
     """Build the adaptive depth legal workflow graph."""
-    workflow = StateGraph(AdaptiveAgentState)
+    # Output schema limits StateSnapshotEvents to only include messages (not intermediate analysis)
+    workflow = StateGraph(AdaptiveAgentState, output=AdaptiveAgentOutput)
 
     # Add all nodes
     workflow.add_node("initialize", initialize_node)

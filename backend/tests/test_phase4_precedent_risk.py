@@ -307,7 +307,7 @@ class TestCasePrecedentNode:
                 "stages_completed": ["safety_gate", "issue_identification", "jurisdiction", "fact_structuring", "legal_elements"],
             }
 
-            result = await case_precedent_node(state)
+            result = await case_precedent_node(state, {})
 
             assert result["precedent_analysis"] == mock_analysis
             assert "case_precedent" in result["stages_completed"]
@@ -595,7 +595,7 @@ class TestRiskAnalysisNode:
                 "stages_completed": ["safety_gate", "issue_identification", "jurisdiction", "fact_structuring", "legal_elements", "case_precedent"],
             }
 
-            result = await risk_analysis_node(state)
+            result = await risk_analysis_node(state, {})
 
             assert result["risk_assessment"] == mock_assessment
             assert "risk_analysis" in result["stages_completed"]
@@ -638,7 +638,7 @@ class TestPhase4StateFlow:
                 "stages_completed": ["safety_gate", "issue_identification", "jurisdiction", "fact_structuring", "legal_elements"],
             }
 
-            await case_precedent_node(state)
+            await case_precedent_node(state, {})
 
             called_state = mock_analyzer.analyze_precedents.call_args[0][0]
             assert called_state["elements_analysis"]["viability_assessment"] == "strong"
@@ -673,7 +673,7 @@ class TestPhase4StateFlow:
                 "stages_completed": ["safety_gate", "issue_identification", "jurisdiction", "fact_structuring", "legal_elements", "case_precedent"],
             }
 
-            await risk_analysis_node(state)
+            await risk_analysis_node(state, {})
 
             called_state = mock_analyzer.analyze_risks.call_args[0][0]
             assert called_state["precedent_analysis"]["pattern_identified"] == "Courts favor tenants"

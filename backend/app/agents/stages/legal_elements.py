@@ -1,9 +1,10 @@
 """Stage 4: Legal Elements Mapping - Maps facts to legal elements for viability assessment."""
 
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from typing import Literal
+from langchain_core.runnables import RunnableConfig
 
 from app.agents.adaptive_state import (
     AdaptiveAgentState,
@@ -11,6 +12,7 @@ from app.agents.adaptive_state import (
     LegalElement,
 )
 from app.agents.schemas.legal_elements import get_element_schema, LegalAreaElements
+from app.agents.utils import get_internal_llm_config
 from app.config import logger
 
 
@@ -216,12 +218,17 @@ class LegalElementsAnalyzer:
 
         return "\n".join(parts)
 
-    async def analyze_elements(self, state: AdaptiveAgentState) -> ElementsAnalysis:
+    async def analyze_elements(
+        self,
+        state: AdaptiveAgentState,
+        config: Optional[RunnableConfig] = None,
+    ) -> ElementsAnalysis:
         """
         Analyze facts against legal elements.
 
         Args:
             state: Current agent state with issue classification, jurisdiction, and facts
+            config: LangGraph config to customize for internal LLM calls
 
         Returns:
             ElementsAnalysis with element satisfaction assessment and viability
@@ -249,32 +256,41 @@ class LegalElementsAnalyzer:
             # Check if we have a predefined schema for this issue type
             schema = get_element_schema(area, sub_category)
 
+            # Use internal config to prevent streaming JSON to frontend
+            internal_config = get_internal_llm_config(config)
+
             if schema:
                 # Use schema-guided analysis
                 legal_framework = self._format_legal_framework(schema)
-                result = await self.chain.ainvoke({
-                    "legal_area": area,
-                    "sub_category": sub_category,
-                    "jurisdiction": primary_jurisdiction,
-                    "legal_framework": legal_framework,
-                    "facts_summary": facts_summary,
-                    "key_facts": key_facts_str,
-                    "fact_gaps": fact_gaps_str,
-                    "evidence_summary": evidence_summary,
-                })
+                result = await self.chain.ainvoke(
+                    {
+                        "legal_area": area,
+                        "sub_category": sub_category,
+                        "jurisdiction": primary_jurisdiction,
+                        "legal_framework": legal_framework,
+                        "facts_summary": facts_summary,
+                        "key_facts": key_facts_str,
+                        "fact_gaps": fact_gaps_str,
+                        "evidence_summary": evidence_summary,
+                    },
+                    config=internal_config,
+                )
                 logger.info(f"Legal elements analyzed using predefined schema: {area}/{sub_category}")
             else:
                 # Use fallback LLM-generated elements
-                result = await self.fallback_chain.ainvoke({
-                    "legal_area": area,
-                    "sub_category": sub_category,
-                    "jurisdiction": primary_jurisdiction,
-                    "query": state.get("current_query", ""),
-                    "facts_summary": facts_summary,
-                    "key_facts": key_facts_str,
-                    "fact_gaps": fact_gaps_str,
-                    "evidence_summary": evidence_summary,
-                })
+                result = await self.fallback_chain.ainvoke(
+                    {
+                        "legal_area": area,
+                        "sub_category": sub_category,
+                        "jurisdiction": primary_jurisdiction,
+                        "query": state.get("current_query", ""),
+                        "facts_summary": facts_summary,
+                        "key_facts": key_facts_str,
+                        "fact_gaps": fact_gaps_str,
+                        "evidence_summary": evidence_summary,
+                    },
+                    config=internal_config,
+                )
                 logger.info(f"Legal elements analyzed using LLM fallback for: {area}/{sub_category}")
 
             # Convert Pydantic to TypedDict
@@ -336,7 +352,7 @@ def get_legal_elements_analyzer() -> LegalElementsAnalyzer:
     return _legal_elements_analyzer
 
 
-async def legal_elements_node(state: AdaptiveAgentState) -> dict:
+async def legal_elements_node(state: AdaptiveAgentState, config: RunnableConfig) -> dict:
     """
     Stage 4: Legal elements mapping node.
 
@@ -346,13 +362,17 @@ async def legal_elements_node(state: AdaptiveAgentState) -> dict:
 
     This stage runs only on the COMPLEX path, after fact structuring.
 
+    Args:
+        state: Current agent state
+        config: LangGraph config for controlling LLM streaming
+
     Returns:
         dict with elements_analysis and updated stage tracking
     """
     logger.info("Stage 4: Legal Elements Mapping")
 
     analyzer = get_legal_elements_analyzer()
-    elements_analysis = await analyzer.analyze_elements(state)
+    elements_analysis = await analyzer.analyze_elements(state, config)
 
     stages_completed = state.get("stages_completed", []).copy()
     stages_completed.append("legal_elements")

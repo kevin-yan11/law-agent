@@ -1,6 +1,7 @@
 """Extended state definition for adaptive depth legal workflow."""
 
-from typing import TypedDict, Optional, Literal, Annotated
+from typing import Optional, Literal, Annotated
+from typing_extensions import TypedDict
 from langchain_core.messages import BaseMessage
 import operator
 
@@ -267,3 +268,16 @@ class AdaptiveAgentState(TypedDict):
 
     # ---- CopilotKit Integration ----
     copilotkit: Optional[dict]  # Inherited context from CopilotKitState
+
+
+# ============================================
+# Output State (limits what gets streamed to UI)
+# ============================================
+class AdaptiveAgentOutput(TypedDict):
+    """
+    Output state schema - only these fields are included in StateSnapshotEvents.
+
+    This prevents intermediate analysis data (safety_assessment, issue_classification, etc.)
+    from being shown as raw JSON to users during processing.
+    """
+    messages: Annotated[list[BaseMessage], operator.add]

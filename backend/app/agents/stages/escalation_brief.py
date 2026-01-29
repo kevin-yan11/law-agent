@@ -2,17 +2,19 @@
 
 import uuid
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableConfig
 
 from app.agents.adaptive_state import (
     AdaptiveAgentState,
     EscalationBrief,
     LegalIssue,
 )
+from app.agents.utils import get_internal_llm_config
 from app.config import logger
 
 
@@ -180,12 +182,17 @@ class EscalationBriefGenerator:
         # Return top 5 most relevant
         return matching_cases[:5]
 
-    async def generate_brief(self, state: AdaptiveAgentState) -> EscalationBrief:
+    async def generate_brief(
+        self,
+        state: AdaptiveAgentState,
+        config: Optional[RunnableConfig] = None,
+    ) -> EscalationBrief:
         """
         Generate a comprehensive escalation brief for lawyer handoff.
 
         Args:
             state: Current agent state with all previous stage outputs
+            config: LangGraph config to customize for internal LLM calls
 
         Returns:
             EscalationBrief with all structured data for lawyer review
@@ -212,19 +219,25 @@ class EscalationBriefGenerator:
 
             client_situation = self._get_client_situation(state)
 
+            # Use internal config to prevent streaming JSON to frontend
+            internal_config = get_internal_llm_config(config)
+
             # Generate summary using LLM
-            summary_result = await self.summary_chain.ainvoke({
-                "legal_area": legal_area,
-                "jurisdiction": primary_jurisdiction,
-                "client_situation": client_situation,
-                "key_facts": self._format_key_facts(state),
-                "fact_gaps": self._format_fact_gaps(state),
-                "viability": viability,
-                "risk_level": risk_level,
-                "time_sensitivity": time_sensitivity,
-                "evidence_summary": self._format_evidence_summary(state),
-                "recommended_strategy": recommended_name,
-            })
+            summary_result = await self.summary_chain.ainvoke(
+                {
+                    "legal_area": legal_area,
+                    "jurisdiction": primary_jurisdiction,
+                    "client_situation": client_situation,
+                    "key_facts": self._format_key_facts(state),
+                    "fact_gaps": self._format_fact_gaps(state),
+                    "viability": viability,
+                    "risk_level": risk_level,
+                    "time_sensitivity": time_sensitivity,
+                    "evidence_summary": self._format_evidence_summary(state),
+                    "recommended_strategy": recommended_name,
+                },
+                config=internal_config,
+            )
 
             # Assemble the brief
             brief: EscalationBrief = {
@@ -373,7 +386,7 @@ def get_brief_generator() -> EscalationBriefGenerator:
     return _brief_generator
 
 
-async def escalation_brief_node(state: AdaptiveAgentState) -> dict:
+async def escalation_brief_node(state: AdaptiveAgentState, config: RunnableConfig) -> dict:
     """
     Stage 8: Escalation brief node.
 
@@ -383,13 +396,17 @@ async def escalation_brief_node(state: AdaptiveAgentState) -> dict:
 
     This stage runs only on the COMPLEX path as the final stage.
 
+    Args:
+        state: Current agent state
+        config: LangGraph config for controlling LLM streaming
+
     Returns:
         dict with escalation_brief and updated stage tracking
     """
     logger.info("Stage 8: Escalation Brief Generation")
 
     generator = get_brief_generator()
-    brief = await generator.generate_brief(state)
+    brief = await generator.generate_brief(state, config)
 
     stages_completed = state.get("stages_completed", []).copy()
     stages_completed.append("escalation_brief")

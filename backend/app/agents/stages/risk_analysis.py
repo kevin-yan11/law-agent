@@ -1,9 +1,10 @@
 """Stage 6: Risk Analysis - Identifies risks, defences, and counterfactual scenarios."""
 
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from typing import Literal
+from langchain_core.runnables import RunnableConfig
 
 from app.agents.adaptive_state import (
     AdaptiveAgentState,
@@ -11,6 +12,7 @@ from app.agents.adaptive_state import (
     RiskFactor,
     DefenceAnalysis,
 )
+from app.agents.utils import get_internal_llm_config
 from app.config import logger
 
 
@@ -271,12 +273,17 @@ class RiskAnalyzer:
         else:
             return "plaintiff/applicant"
 
-    async def analyze_risks(self, state: AdaptiveAgentState) -> RiskAssessment:
+    async def analyze_risks(
+        self,
+        state: AdaptiveAgentState,
+        config: Optional[RunnableConfig] = None,
+    ) -> RiskAssessment:
         """
         Analyze risks, defences, and counterfactual scenarios.
 
         Args:
             state: Current agent state with all previous stage outputs
+            config: LangGraph config to customize for internal LLM calls
 
         Returns:
             RiskAssessment with identified risks, defences, and scenarios
@@ -304,18 +311,23 @@ class RiskAnalyzer:
             known_defences = self._get_known_defences(state)
             user_position = self._determine_user_position(state)
 
-            result = await self.chain.ainvoke({
-                "legal_area": legal_area,
-                "sub_category": sub_category,
-                "jurisdiction": primary_jurisdiction,
-                "user_position": user_position,
-                "key_facts": key_facts_str,
-                "fact_gaps": fact_gaps_str,
-                "evidence_summary": evidence_summary,
-                "elements_summary": elements_summary,
-                "precedent_summary": precedent_summary,
-                "known_defences": known_defences,
-            })
+            # Use internal config to prevent streaming JSON to frontend
+            internal_config = get_internal_llm_config(config)
+            result = await self.chain.ainvoke(
+                {
+                    "legal_area": legal_area,
+                    "sub_category": sub_category,
+                    "jurisdiction": primary_jurisdiction,
+                    "user_position": user_position,
+                    "key_facts": key_facts_str,
+                    "fact_gaps": fact_gaps_str,
+                    "evidence_summary": evidence_summary,
+                    "elements_summary": elements_summary,
+                    "precedent_summary": precedent_summary,
+                    "known_defences": known_defences,
+                },
+                config=internal_config,
+            )
 
             # Convert to TypedDicts
             risks: list[RiskFactor] = [
@@ -383,7 +395,7 @@ def get_risk_analyzer() -> RiskAnalyzer:
     return _risk_analyzer
 
 
-async def risk_analysis_node(state: AdaptiveAgentState) -> dict:
+async def risk_analysis_node(state: AdaptiveAgentState, config: RunnableConfig) -> dict:
     """
     Stage 6: Risk analysis node.
 
@@ -393,13 +405,17 @@ async def risk_analysis_node(state: AdaptiveAgentState) -> dict:
 
     This stage runs only on the COMPLEX path, after case precedent analysis.
 
+    Args:
+        state: Current agent state
+        config: LangGraph config for controlling LLM streaming
+
     Returns:
         dict with risk_assessment and updated stage tracking
     """
     logger.info("Stage 6: Risk Analysis")
 
     analyzer = get_risk_analyzer()
-    risk_assessment = await analyzer.analyze_risks(state)
+    risk_assessment = await analyzer.analyze_risks(state, config)
 
     stages_completed = state.get("stages_completed", []).copy()
     stages_completed.append("risk_analysis")

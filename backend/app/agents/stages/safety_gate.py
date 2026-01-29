@@ -1,13 +1,14 @@
 """Stage 0: Safety Gate - Detects high-risk situations requiring escalation."""
 
 from langchain_core.messages import AIMessage
+from langchain_core.runnables import RunnableConfig
 
 from app.agents.adaptive_state import AdaptiveAgentState
 from app.agents.routers.safety_router import get_safety_router
 from app.config import logger
 
 
-async def safety_gate_node(state: AdaptiveAgentState) -> dict:
+async def safety_gate_node(state: AdaptiveAgentState, config: RunnableConfig) -> dict:
     """
     Stage 0: Safety assessment.
 
@@ -21,6 +22,10 @@ async def safety_gate_node(state: AdaptiveAgentState) -> dict:
     - Child welfare emergencies
     - Mental health crises
 
+    Args:
+        state: Current agent state
+        config: LangGraph config for controlling LLM streaming
+
     Returns:
         dict with safety_assessment and updated stage tracking
     """
@@ -30,6 +35,7 @@ async def safety_gate_node(state: AdaptiveAgentState) -> dict:
     assessment = await router.assess(
         query=state.get("current_query", ""),
         user_state=state.get("user_state"),
+        config=config,
     )
 
     stages_completed = state.get("stages_completed", []).copy()

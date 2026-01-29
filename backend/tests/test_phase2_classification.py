@@ -344,7 +344,7 @@ class TestIssueIdentificationNode:
                 "stages_completed": ["safety_gate"],
             }
 
-            result = await issue_identification_node(state)
+            result = await issue_identification_node(state, {})
 
             assert result["issue_classification"] == mock_classification
             assert "issue_identification" in result["stages_completed"]
@@ -469,7 +469,7 @@ class TestJurisdictionNode:
                 "stages_completed": ["safety_gate", "issue_identification"],
             }
 
-            result = await jurisdiction_node(state)
+            result = await jurisdiction_node(state, {})
 
             assert result["jurisdiction_result"] == mock_result
             assert "jurisdiction" in result["stages_completed"]
