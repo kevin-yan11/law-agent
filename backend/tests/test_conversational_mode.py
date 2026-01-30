@@ -6,9 +6,9 @@ from langchain_core.messages import HumanMessage, AIMessage
 from app.agents.conversational_state import ConversationalState
 from app.agents.conversational_graph import (
     get_conversational_graph,
-    extract_user_state_from_context,
     route_after_initialize,
 )
+from app.agents.utils import extract_user_state
 from app.agents.stages.safety_check_lite import (
     _check_crisis_keywords,
     _might_be_risky,
@@ -191,7 +191,7 @@ class TestContextExtraction:
             "brief_needs_full_intake": False,
             "error": None,
         }
-        assert extract_user_state_from_context(state) == "NSW"
+        assert extract_user_state(state) == "NSW"
 
     def test_extract_user_state_with_quotes(self):
         state: ConversationalState = {
@@ -220,7 +220,7 @@ class TestContextExtraction:
             "brief_needs_full_intake": False,
             "error": None,
         }
-        assert extract_user_state_from_context(state) == "VIC"
+        assert extract_user_state(state) == "VIC"
 
 
 class TestConversationalGraphCompiles:

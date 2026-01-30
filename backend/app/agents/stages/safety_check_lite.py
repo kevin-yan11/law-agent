@@ -8,10 +8,12 @@ import re
 from typing import Optional
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
+from langchain_openai import ChatOpenAI
+from pydantic import BaseModel, Field
 
 from app.agents.conversational_state import ConversationalState
 from app.agents.schemas.emergency_resources import get_resources_for_risk
-from app.agents.routers.safety_router import get_safety_router
+from app.agents.utils.config import get_internal_llm_config
 from app.config import logger
 
 
@@ -43,6 +45,58 @@ UNCERTAIN_KEYWORDS = [
     r"\b(police|officer|crime)\b",
     r"\b(hurt|pain|danger)\b",
 ]
+
+
+class SafetyAssessment(BaseModel):
+    """LLM safety assessment result."""
+    requires_escalation: bool = Field(
+        description="True if the query indicates a crisis requiring immediate support"
+    )
+    risk_category: Optional[str] = Field(
+        default=None,
+        description="Category: suicide_self_harm, family_violence, child_welfare, criminal, or None"
+    )
+    reasoning: str = Field(description="Brief explanation of assessment")
+
+
+async def _llm_safety_check(
+    query: str,
+    user_state: Optional[str],
+    config: RunnableConfig,
+) -> dict:
+    """
+    Use LLM to assess if query indicates a crisis situation.
+
+    Only called when keyword detection is uncertain.
+    """
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    structured_llm = llm.with_structured_output(SafetyAssessment)
+
+    prompt = f"""Assess if this legal query indicates a crisis requiring immediate professional support.
+
+Query: {query}
+User location: {user_state or 'Unknown'}
+
+Crisis categories that require escalation:
+- suicide_self_harm: Mentions of self-harm, suicide, wanting to die
+- family_violence: Domestic violence, abuse, threats, protection orders
+- child_welfare: Child protection, abuse, DOCS involvement
+- criminal: Arrests, criminal charges, police custody
+
+Only mark requires_escalation=True if there's clear indication of immediate risk or crisis.
+General legal questions about these topics (e.g., "what is a DVO?") do NOT require escalation."""
+
+    llm_config = get_internal_llm_config(config)
+    result = await structured_llm.ainvoke(prompt, config=llm_config)
+
+    if result.requires_escalation and result.risk_category:
+        resources = get_resources_for_risk(result.risk_category, user_state)
+        return {
+            "requires_escalation": True,
+            "recommended_resources": resources,
+        }
+
+    return {"requires_escalation": False}
 
 
 def _check_crisis_keywords(query: str) -> tuple[bool, str | None]:
@@ -114,8 +168,7 @@ async def safety_check_lite_node(
     # Step 2: Check if query might be risky (needs LLM verification)
     if _might_be_risky(query):
         logger.info("Uncertain keywords detected, running LLM safety check")
-        router = get_safety_router()
-        assessment = await router.assess(
+        assessment = await _llm_safety_check(
             query=query,
             user_state=user_state,
             config=config,

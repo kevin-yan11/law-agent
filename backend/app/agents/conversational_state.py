@@ -38,6 +38,13 @@ class ConversationalState(TypedDict):
     suggest_brief: bool  # Whether to highlight brief generation option
     suggest_lawyer: bool  # Whether to suggest finding a lawyer
 
+    # ---- Deep Analysis ----
+    suggest_deep_analysis: bool  # Whether to offer deep analysis
+    analysis_readiness: float  # 0-1 score of how ready we are for analysis
+    analysis_offered: bool  # Whether we've already offered analysis this session
+    analysis_accepted: Optional[bool]  # User's response to analysis offer
+    analysis_result: Optional[dict]  # Results from deep analysis (facts, risks, strategy)
+
     # ---- Safety ----
     safety_result: Literal["safe", "escalate", "unknown"]
     crisis_resources: Optional[list[dict]]  # If escalation needed
@@ -69,3 +76,6 @@ class ConversationalOutput(TypedDict):
     quick_replies: Optional[list[str]]
     suggest_brief: bool
     suggest_lawyer: bool
+    suggest_deep_analysis: bool
+    analysis_readiness: float
+    analysis_result: Optional[dict]

@@ -68,6 +68,16 @@ class QuickReplyAnalysis(BaseModel):
         default=False,
         description="True if user should consider consulting a lawyer soon"
     )
+    suggest_deep_analysis: bool = Field(
+        default=False,
+        description="True if we have enough facts to offer a deeper analysis of their situation"
+    )
+    analysis_readiness: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Score 0-1 indicating how ready we are for deep analysis (0.7+ means suggest it)"
+    )
 
 
 QUICK_REPLY_PROMPT = """Based on this conversation, suggest 2-4 quick reply options that would be natural for the user to say next.
@@ -85,6 +95,23 @@ Examples of good quick replies:
 - "Can you explain more?"
 - "Find me a lawyer"
 - "What about costs?"
+
+## Analysis Readiness Assessment
+
+Score how ready we are for a deep analysis (0.0 to 1.0):
+
+**Add points for:**
+- User described a specific dispute or conflict (+0.2)
+- Multiple facts mentioned (dates, amounts, events) (+0.2)
+- Other party identified (landlord, employer, etc.) (+0.15)
+- User mentioned having documents/evidence (+0.15)
+- Conversation has 3+ turns of substance (+0.15)
+- User asked "what should I do?" or "what are my options?" (+0.15)
+
+**Suggest deep analysis when:**
+- analysis_readiness >= 0.7 AND
+- User hasn't already received detailed analysis AND
+- The matter involves a real dispute (not just a general question)
 
 Also indicate if:
 - The situation seems complex enough that a lawyer brief would be helpful
@@ -133,6 +160,8 @@ async def generate_quick_replies(
             quick_replies=["Tell me more", "What are my options?"],
             suggest_brief=False,
             suggest_lawyer=False,
+            suggest_deep_analysis=False,
+            analysis_readiness=0.0,
         )
 
 
@@ -218,6 +247,8 @@ async def chat_response_node(
             "quick_replies": quick_reply_analysis.quick_replies,
             "suggest_brief": quick_reply_analysis.suggest_brief,
             "suggest_lawyer": quick_reply_analysis.suggest_lawyer,
+            "suggest_deep_analysis": quick_reply_analysis.suggest_deep_analysis,
+            "analysis_readiness": quick_reply_analysis.analysis_readiness,
         }
 
     except Exception as e:
@@ -231,4 +262,6 @@ async def chat_response_node(
             "quick_replies": ["What can you help with?", "Tell me about tenant rights"],
             "suggest_brief": False,
             "suggest_lawyer": False,
+            "suggest_deep_analysis": False,
+            "analysis_readiness": 0.0,
         }
