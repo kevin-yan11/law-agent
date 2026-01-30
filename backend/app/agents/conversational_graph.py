@@ -4,10 +4,17 @@ This is a simpler, faster alternative to the adaptive graph.
 Focuses on natural conversation with tools, not multi-stage pipelines.
 
 Flow (chat mode):
-    initialize -> safety_check -> chat_response -> [END | analysis_offer]
-                      |                                    |
-                      v (if crisis)                        v (if accepted)
-              escalation_response -> END     deep_analysis -> analysis_response -> END
+    initialize -> safety_check -> chat_response -> [END | analysis_offer -> END]
+                      |
+                      v (if crisis)
+              escalation_response -> END
+
+Flow (analysis offer - when readiness >= 0.7):
+    analysis_offer -> END (wait for user response)
+
+    Next message:
+    initialize -> handle_analysis_response -> [accept -> deep_analysis -> analysis_response -> END]
+                                             [decline -> chat_response -> END]
 
 Flow (brief mode - triggered by user):
     initialize -> brief_check_info -> [brief_ask_questions | brief_generate] -> END
@@ -39,6 +46,7 @@ from app.agents.stages.deep_analysis import (
     analysis_response_node,
     route_after_chat,
     route_after_analysis_offer,
+    handle_analysis_response_node,
 )
 from app.config import logger
 
@@ -102,17 +110,22 @@ async def initialize_node(state: ConversationalState) -> dict:
     }
 
 
-def route_after_initialize(state: ConversationalState) -> Literal["brief", "check", "skip"]:
+def route_after_initialize(state: ConversationalState) -> Literal["brief", "analysis_response", "check", "skip"]:
     """
     Route based on mode after initialization.
 
     - brief: User triggered brief generation
+    - analysis_response: User is responding to analysis offer
     - check: Run safety check (first message or risky content)
     - skip: Skip safety, go directly to chat
     """
     # Brief mode bypasses normal flow
     if state.get("mode") == "brief":
         return "brief"
+
+    # Check if we're waiting for user's response to analysis offer
+    if state.get("analysis_pending_response", False):
+        return "analysis_response"
 
     # Always check on first message
     if state.get("is_first_message", True):
@@ -189,6 +202,7 @@ def build_conversational_graph():
 
     # Add deep analysis nodes
     workflow.add_node("analysis_offer", analysis_offer_node)
+    workflow.add_node("handle_analysis_response", handle_analysis_response_node)
     workflow.add_node("deep_analysis", deep_analysis_node)
     workflow.add_node("analysis_response", analysis_response_node)
 
@@ -206,6 +220,7 @@ def build_conversational_graph():
         route_after_initialize,
         {
             "brief": "brief_check_info",
+            "analysis_response": "handle_analysis_response",
             "check": "safety_check",
             "skip": "chat_response",
         }
@@ -231,13 +246,17 @@ def build_conversational_graph():
         }
     )
 
-    # After analysis offer, route based on user response
+    # After analysis offer, END and wait for user's response
+    # (The next message will be routed via handle_analysis_response)
+    workflow.add_edge("analysis_offer", END)
+
+    # After handling user's response to analysis offer
     workflow.add_conditional_edges(
-        "analysis_offer",
+        "handle_analysis_response",
         route_after_analysis_offer,
         {
             "accept": "deep_analysis",
-            "decline": END,
+            "decline": "chat_response",  # Continue normal chat if declined
         }
     )
 

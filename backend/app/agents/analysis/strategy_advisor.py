@@ -2,7 +2,7 @@
 
 from typing import Optional
 from typing_extensions import TypedDict
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableConfig
@@ -30,12 +30,27 @@ class StrategySummary(TypedDict):
     immediate_actions: list[str]
 
 
+# Pydantic model for OpenAI structured output (require additionalProperties: false)
+class StrategyOptionModel(BaseModel):
+    """A strategy option."""
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(description="Name of the strategy")
+    description: str = Field(description="Description of the strategy")
+    pros: list[str] = Field(default_factory=list, description="Advantages of this strategy")
+    cons: list[str] = Field(default_factory=list, description="Disadvantages of this strategy")
+    estimated_cost: Optional[str] = Field(default=None, description="Estimated cost range")
+    estimated_timeline: Optional[str] = Field(default=None, description="Estimated timeline")
+
+
 class StrategyOutput(BaseModel):
     """LLM output for strategy recommendations."""
-    recommended: dict = Field(
-        description="The primary recommended strategy with name, description, pros, cons, estimated_cost, estimated_timeline"
+    model_config = ConfigDict(extra="forbid")
+
+    recommended: StrategyOptionModel = Field(
+        description="The primary recommended strategy"
     )
-    alternatives: list[dict] = Field(
+    alternatives: list[StrategyOptionModel] = Field(
         default_factory=list,
         description="1-2 alternative strategies"
     )
@@ -159,14 +174,14 @@ async def recommend_strategy(
         )
 
         # Convert to TypedDict format
-        def to_strategy_option(data: dict) -> StrategyOption:
+        def to_strategy_option(data: StrategyOptionModel) -> StrategyOption:
             return {
-                "name": data.get("name", "Unknown"),
-                "description": data.get("description", ""),
-                "pros": data.get("pros", []),
-                "cons": data.get("cons", []),
-                "estimated_cost": data.get("estimated_cost"),
-                "estimated_timeline": data.get("estimated_timeline"),
+                "name": data.name,
+                "description": data.description,
+                "pros": data.pros,
+                "cons": data.cons,
+                "estimated_cost": data.estimated_cost,
+                "estimated_timeline": data.estimated_timeline,
             }
 
         strategy_summary: StrategySummary = {

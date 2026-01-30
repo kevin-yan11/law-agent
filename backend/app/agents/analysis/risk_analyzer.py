@@ -2,7 +2,7 @@
 
 from typing import Optional
 from typing_extensions import TypedDict
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableConfig
@@ -28,8 +28,20 @@ class RiskSummary(TypedDict):
     time_sensitive: Optional[str]
 
 
+# Pydantic model for OpenAI structured output (require additionalProperties: false)
+class RiskFactorModel(BaseModel):
+    """A risk factor in the user's case."""
+    model_config = ConfigDict(extra="forbid")
+
+    description: str = Field(description="Description of the risk")
+    severity: str = Field(description="high, medium, or low")
+    mitigation: Optional[str] = Field(default=None, description="How to mitigate this risk")
+
+
 class RiskAnalysisOutput(BaseModel):
     """LLM output for risk analysis."""
+    model_config = ConfigDict(extra="forbid")
+
     overall_risk: str = Field(
         description="Overall risk level: high, medium, or low"
     )
@@ -41,7 +53,7 @@ class RiskAnalysisOutput(BaseModel):
         default_factory=list,
         description="Weaknesses or gaps in the user's position"
     )
-    risks: list[dict] = Field(
+    risks: list[RiskFactorModel] = Field(
         default_factory=list,
         description="Specific risk factors with description, severity, and mitigation"
     )
@@ -160,9 +172,9 @@ async def analyze_risks(
             "weaknesses": result.weaknesses,
             "risks": [
                 {
-                    "description": r.get("description", ""),
-                    "severity": r.get("severity", "medium"),
-                    "mitigation": r.get("mitigation"),
+                    "description": r.description,
+                    "severity": r.severity,
+                    "mitigation": r.mitigation,
                 }
                 for r in result.risks
             ],

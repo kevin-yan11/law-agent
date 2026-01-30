@@ -24,7 +24,8 @@ async def analysis_offer_node(state: ConversationalState) -> dict:
     Offer deep analysis to the user.
 
     This node generates a message asking if the user wants a deeper
-    analysis of their situation.
+    analysis of their situation. The graph then ENDs, waiting for
+    the user's response in the next message.
     """
     logger.info("Offering deep analysis to user")
 
@@ -38,6 +39,7 @@ async def analysis_offer_node(state: ConversationalState) -> dict:
     return {
         "messages": [offer_message],
         "analysis_offered": True,
+        "analysis_pending_response": True,  # Wait for user's response on next message
         "quick_replies": ["Yes, analyze my situation", "No, keep chatting"],
     }
 
@@ -197,7 +199,7 @@ async def analysis_response_node(state: ConversationalState) -> dict:
     if strategy.get("alternatives"):
         response_parts.append("**Alternative approaches:**\n")
         for alt in strategy["alternatives"][:2]:
-            response_parts.append(f"• **{alt.get('name')}** — {alt.get('description', '')[:100]}...\n")
+            response_parts.append(f"• **{alt.get('name')}** — {alt.get('description', '')}\n")
         response_parts.append("\n")
 
     # Closing
@@ -228,17 +230,19 @@ def route_after_chat(state: ConversationalState) -> str:
     """
     Route after chat response.
 
-    - If analysis readiness is high and not yet offered → offer analysis
+    - If analysis readiness is high (>= 0.7) and not yet offered → offer analysis
     - Otherwise → end
+
+    Note: We ONLY use the readiness threshold, not the LLM's suggest_deep_analysis flag,
+    because the LLM doesn't reliably follow scoring rules.
     """
-    suggest_analysis = state.get("suggest_deep_analysis", False)
     analysis_readiness = state.get("analysis_readiness", 0.0)
     already_offered = state.get("analysis_offered", False)
 
-    # Offer analysis if:
-    # - LLM suggested it OR readiness >= 0.7
-    # - Haven't offered yet this session
-    if (suggest_analysis or analysis_readiness >= 0.7) and not already_offered:
+    # Offer analysis ONLY if readiness threshold is met
+    # The readiness score is based on % of checklist items gathered (8 items total)
+    # 0.7 = at least 5-6 items known (state, problem type, role, facts, desired outcome, etc.)
+    if analysis_readiness >= 0.7 and not already_offered:
         logger.info(f"Routing to analysis offer (readiness={analysis_readiness})")
         return "offer_analysis"
 
@@ -249,11 +253,12 @@ def route_after_analysis_offer(state: ConversationalState) -> str:
     """
     Route based on user's response to analysis offer.
 
-    Checks the latest message for acceptance/decline signals.
+    Called during initialize phase when analysis_pending_response is True.
+    Checks the latest message (user's response to the offer) for acceptance/decline.
     """
     messages = state.get("messages", [])
 
-    # Find the latest user message
+    # Find the latest user message (this is their response to the offer)
     latest_user_msg = ""
     for msg in reversed(messages):
         if isinstance(msg, HumanMessage):
@@ -265,11 +270,24 @@ def route_after_analysis_offer(state: ConversationalState) -> str:
         logger.info("User accepted analysis offer")
         return "accept"
 
-    # Check for decline (including no response defaulting to decline)
+    # Check for explicit decline
     if any(trigger in latest_user_msg for trigger in ANALYSIS_DECLINE_TRIGGERS):
         logger.info("User declined analysis offer")
         return "decline"
 
-    # Default: if they said something else, treat as decline but continue chat
-    logger.info("Unclear response to analysis offer, continuing chat")
+    # Default: if they said something else, treat as decline and continue normal chat
+    logger.info("Unclear response to analysis offer, continuing normal chat")
     return "decline"
+
+
+async def handle_analysis_response_node(state: ConversationalState) -> dict:
+    """
+    Handle user's response to analysis offer.
+
+    Clears the pending flag and sets accepted status based on routing decision.
+    This node is called before deep_analysis (if accepted) or before chat_response (if declined).
+    """
+    # Clear the pending flag - we've processed the response
+    return {
+        "analysis_pending_response": False,
+    }

@@ -46,10 +46,13 @@ You're like a knowledgeable friend who happens to understand law - approachable,
 - State/Territory: {user_state}
 - Has uploaded document: {has_document}
 
+## Important: Ask User to Select State if Unknown
+If the user's state/territory shows as "Not specified", ask them to select their state from the dropdown menu at the top of the chat. This is important because laws vary significantly between states. Say something like: "I noticed you haven't selected your state yet. Could you pick your state or territory from the dropdown at the top? Laws can vary quite a bit between states, so this helps me give you accurate information."
+
 ## Tool Usage Guidelines
 - Use lookup_law when user asks about specific rights, laws, or legal requirements
 - Use find_lawyer when user asks for lawyer recommendations or says they need professional help
-- Always pass the user's state to tools
+- Always pass the user's state to tools (if known)
 
 Remember: Your goal is to be helpful and informative while keeping the conversation natural and flowing."""
 
@@ -98,20 +101,26 @@ Examples of good quick replies:
 
 ## Analysis Readiness Assessment
 
-Score how ready we are for a deep analysis (0.0 to 1.0):
+Count how many items from this checklist are CLEARLY known from the conversation.
 
-**Add points for:**
-- User described a specific dispute or conflict (+0.2)
-- Multiple facts mentioned (dates, amounts, events) (+0.2)
-- Other party identified (landlord, employer, etc.) (+0.15)
-- User mentioned having documents/evidence (+0.15)
-- Conversation has 3+ turns of substance (+0.15)
-- User asked "what should I do?" or "what are my options?" (+0.15)
+**Info Checklist (8 items total):**
+1. □ Australian state/territory (NSW, VIC, QLD, etc.)
+2. □ Nature of legal problem (tenancy, employment, contract, family, etc.)
+3. □ User's role (tenant, employee, buyer, parent, etc.)
+4. □ What happened (key events/facts)
+5. □ What user wants (desired outcome)
+6. □ Other party identified (landlord, employer, company name, etc.)
+7. □ Timeline or dates mentioned
+8. □ Documents/evidence mentioned
+
+**Scoring:**
+- Count items that are CLEARLY known (not vague or implied)
+- analysis_readiness = items_known / 8 (e.g., 6 items = 0.75)
 
 **Suggest deep analysis when:**
-- analysis_readiness >= 0.7 AND
-- User hasn't already received detailed analysis AND
-- The matter involves a real dispute (not just a general question)
+- analysis_readiness >= 0.7 (at least 6 of 8 items known) AND
+- User has a real dispute/problem (not just asking "what is X?") AND
+- User hasn't already received detailed analysis this session
 
 Also indicate if:
 - The situation seems complex enough that a lawyer brief would be helpful
@@ -128,6 +137,7 @@ async def generate_quick_replies(
     messages: list,
     response_content: str,
     config: RunnableConfig,
+    user_state: Optional[str] = None,
 ) -> QuickReplyAnalysis:
     """Generate quick reply suggestions based on conversation context."""
     try:
@@ -151,6 +161,22 @@ async def generate_quick_replies(
             ),
             config=internal_config,
         )
+
+        # IMPORTANT: Cap analysis_readiness if state/territory is unknown
+        # This is enforced in code because LLMs don't reliably follow scoring rules
+        state_is_known = user_state and user_state not in [
+            "Not specified",
+            "User has not selected their state yet.",
+            None,
+            "",
+        ]
+        if not state_is_known and result.analysis_readiness > 0.5:
+            logger.info(
+                f"Capping analysis_readiness from {result.analysis_readiness} to 0.5 "
+                "(state/territory unknown)"
+            )
+            result.analysis_readiness = 0.5
+            result.suggest_deep_analysis = False
 
         return result
 
@@ -240,6 +266,7 @@ async def chat_response_node(
             messages,
             response_content,
             config,
+            user_state=user_state,
         )
 
         return {

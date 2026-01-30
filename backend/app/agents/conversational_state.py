@@ -42,6 +42,7 @@ class ConversationalState(TypedDict):
     suggest_deep_analysis: bool  # Whether to offer deep analysis
     analysis_readiness: float  # 0-1 score of how ready we are for analysis
     analysis_offered: bool  # Whether we've already offered analysis this session
+    analysis_pending_response: bool  # True if waiting for user's response to offer
     analysis_accepted: Optional[bool]  # User's response to analysis offer
     analysis_result: Optional[dict]  # Results from deep analysis (facts, risks, strategy)
 

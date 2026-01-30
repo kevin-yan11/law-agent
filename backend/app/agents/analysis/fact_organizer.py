@@ -2,7 +2,7 @@
 
 from typing import Optional
 from typing_extensions import TypedDict
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
@@ -44,17 +44,48 @@ class FactSummary(TypedDict):
     narrative: str
 
 
+# Pydantic models for OpenAI structured output (require additionalProperties: false)
+class TimelineEventModel(BaseModel):
+    """A single event in the timeline."""
+    model_config = ConfigDict(extra="forbid")
+
+    date: Optional[str] = Field(default=None, description="Date or relative time")
+    description: str = Field(description="What happened")
+    significance: str = Field(description="critical, relevant, or background")
+
+
+class PartyModel(BaseModel):
+    """A party involved in the matter."""
+    model_config = ConfigDict(extra="forbid")
+
+    role: str = Field(description="Role in the matter (tenant, landlord, etc.)")
+    name: Optional[str] = Field(default=None, description="Name if known")
+    is_user: bool = Field(description="Whether this party is the user")
+
+
+class EvidenceModel(BaseModel):
+    """An evidence item."""
+    model_config = ConfigDict(extra="forbid")
+
+    type: str = Field(description="document, witness, communication, or physical")
+    description: str = Field(description="Description of the evidence")
+    status: str = Field(description="available, mentioned, or needed")
+    strength: str = Field(description="strong, moderate, or weak")
+
+
 class FactOrganizationOutput(BaseModel):
     """LLM output for fact organization."""
-    timeline: list[dict] = Field(
+    model_config = ConfigDict(extra="forbid")
+
+    timeline: list[TimelineEventModel] = Field(
         default_factory=list,
         description="Chronological events with date, description, and significance"
     )
-    parties: list[dict] = Field(
+    parties: list[PartyModel] = Field(
         default_factory=list,
         description="Parties involved with role, name (if known), and is_user flag"
     )
-    evidence: list[dict] = Field(
+    evidence: list[EvidenceModel] = Field(
         default_factory=list,
         description="Evidence items with type, description, status, and strength"
     )
@@ -151,26 +182,26 @@ async def organize_facts(
         fact_summary: FactSummary = {
             "timeline": [
                 {
-                    "date": e.get("date"),
-                    "description": e.get("description", ""),
-                    "significance": e.get("significance", "relevant"),
+                    "date": e.date,
+                    "description": e.description,
+                    "significance": e.significance,
                 }
                 for e in result.timeline
             ],
             "parties": [
                 {
-                    "role": p.get("role", "unknown"),
-                    "name": p.get("name"),
-                    "is_user": p.get("is_user", False),
+                    "role": p.role,
+                    "name": p.name,
+                    "is_user": p.is_user,
                 }
                 for p in result.parties
             ],
             "evidence": [
                 {
-                    "type": ev.get("type", "document"),
-                    "description": ev.get("description", ""),
-                    "status": ev.get("status", "mentioned"),
-                    "strength": ev.get("strength", "moderate"),
+                    "type": ev.type,
+                    "description": ev.description,
+                    "status": ev.status,
+                    "strength": ev.strength,
                 }
                 for ev in result.evidence
             ],
