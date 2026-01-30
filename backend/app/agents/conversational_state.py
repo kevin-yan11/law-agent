@@ -57,6 +57,9 @@ class ConversationalState(TypedDict):
     brief_info_complete: bool
     brief_questions_asked: int
     brief_needs_full_intake: bool  # True if conversation was too short when brief triggered
+    brief_pending_questions: Optional[list[str]]  # Questions waiting to be asked (one at a time)
+    brief_current_question_index: int  # Which question we're on (0-indexed)
+    brief_total_questions: int  # Total number of questions in current round
 
     # ---- CopilotKit Integration ----
     copilotkit: Optional[dict]

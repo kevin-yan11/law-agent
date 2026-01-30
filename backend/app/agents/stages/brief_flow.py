@@ -311,8 +311,8 @@ async def brief_check_info_node(
 
     This node handles multiple scenarios:
     1. Initial brief trigger - analyze conversation, identify gaps
-    2. User answered a question - re-analyze and update missing info
-    3. User said "I don't know" - move item to unknown, continue with next
+    2. User answered a question - check if more pending questions, else re-analyze
+    3. User said "I don't know" - skip current question, continue with next
     4. User said "Generate now" - mark complete to generate with available info
     5. Empty conversation - start full intake flow
 
@@ -328,34 +328,59 @@ async def brief_check_info_node(
     current_query = state.get("current_query", "")
     existing_missing = state.get("brief_missing_info") or []
     existing_unknown = state.get("brief_unknown_info") or []
+    pending_questions = state.get("brief_pending_questions") or []
 
-    logger.info(f"Brief check: analyzing {len(messages)} messages")
+    logger.info(f"Brief check: analyzing {len(messages)} messages, pending_questions={len(pending_questions)}")
 
     # Check if user wants to generate immediately
     if _detect_generate_now(current_query):
         logger.info("User requested immediate brief generation")
         return {
             "brief_info_complete": True,
+            "brief_pending_questions": [],  # Clear pending questions
         }
 
     # Check if user said "I don't know" to the previous question
-    if _detect_skip_response(current_query) and existing_missing:
-        # Move the first missing item to unknown
-        skipped_item = existing_missing[0]
-        new_missing = existing_missing[1:]
-        new_unknown = existing_unknown + [skipped_item]
+    if _detect_skip_response(current_query):
+        # If we have pending questions, just continue to next one
+        # If we have missing info tracked, move first item to unknown
+        if existing_missing:
+            skipped_item = existing_missing[0]
+            new_missing = existing_missing[1:]
+            new_unknown = existing_unknown + [skipped_item]
+            logger.info(f"User skipped question, moved '{skipped_item}' to unknown")
+        else:
+            new_missing = existing_missing
+            new_unknown = existing_unknown
 
-        logger.info(f"User skipped question, moved '{skipped_item}' to unknown")
+        # Check if there are more pending questions
+        if pending_questions:
+            # More questions to ask - don't mark complete yet
+            logger.info(f"Skipped, but {len(pending_questions)} questions still pending")
+            return {
+                "brief_missing_info": new_missing,
+                "brief_unknown_info": new_unknown,
+                "brief_info_complete": False,
+            }
+        else:
+            # No more pending questions - check if we need to re-analyze
+            is_complete = len(new_missing) == 0
+            return {
+                "brief_missing_info": new_missing,
+                "brief_unknown_info": new_unknown,
+                "brief_info_complete": is_complete,
+            }
 
-        # If no more missing items, we're complete
-        is_complete = len(new_missing) == 0
-
+    # If there are still pending questions from previous round, continue asking
+    # (user answered the last question, just move to next one)
+    if pending_questions:
+        logger.info(f"User answered question, {len(pending_questions)} questions still pending")
         return {
-            "brief_missing_info": new_missing,
-            "brief_unknown_info": new_unknown,
-            "brief_info_complete": is_complete,
+            "brief_info_complete": False,
+            # Keep existing state - brief_ask_questions_node will use pending_questions
         }
 
+    # No pending questions - need to analyze conversation to extract facts
     # Count substantive messages (excluding brief trigger)
     substantive_messages = [
         m for m in messages
@@ -403,6 +428,9 @@ async def brief_check_info_node(
             "brief_unknown_info": existing_unknown,  # Preserve unknown items
             "brief_info_complete": has_enough_info,
             "brief_needs_full_intake": is_empty_conversation,
+            "brief_pending_questions": [],  # Clear for fresh question generation
+            "brief_current_question_index": 0,
+            "brief_total_questions": 0,
         }
 
     except Exception as e:
@@ -421,6 +449,7 @@ async def brief_check_info_node(
             },
             "brief_missing_info": ["Unable to complete analysis - proceeding with available info"],
             "brief_info_complete": True,  # Proceed anyway with what we have
+            "brief_pending_questions": [],
         }
 
 
@@ -429,59 +458,91 @@ async def brief_ask_questions_node(
     config: RunnableConfig,
 ) -> dict:
     """
-    Ask targeted questions to fill information gaps.
+    Ask targeted questions to fill information gaps - ONE AT A TIME.
 
     Called when brief_info_complete is False. Continues asking until:
     - All info gathered (or marked as unknown)
     - User requests early generation
+
+    Questions are asked one by one with a progress indicator (e.g., "Question 1/3").
 
     Args:
         state: Current conversation state
         config: LangGraph config
 
     Returns:
-        dict with messages (questions to ask) and incremented questions_asked
+        dict with messages (single question) and question tracking state
     """
     facts = state.get("brief_facts_collected", {})
     missing_info = state.get("brief_missing_info", [])
     questions_asked = state.get("brief_questions_asked", 0)
     needs_full_intake = state.get("brief_needs_full_intake", False)
+    pending_questions = state.get("brief_pending_questions") or []
+    current_index = state.get("brief_current_question_index", 0)
+    total_questions = state.get("brief_total_questions", 0)
 
-    logger.info(f"Brief questions: round {questions_asked + 1}, missing={len(missing_info)}, full_intake={needs_full_intake}")
+    logger.info(
+        f"Brief questions: pending={len(pending_questions)}, "
+        f"current_index={current_index}, total={total_questions}"
+    )
 
     try:
-        # Use internal config to suppress streaming
-        internal_config = get_internal_llm_config(config)
+        # If no pending questions, generate new ones
+        if not pending_questions:
+            # Use internal config to suppress streaming
+            internal_config = get_internal_llm_config(config)
 
-        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
-        structured_llm = llm.with_structured_output(FollowUpQuestions)
+            llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
+            structured_llm = llm.with_structured_output(FollowUpQuestions)
 
-        result = await structured_llm.ainvoke(
-            FOLLOW_UP_PROMPT.format(
-                situation_summary=facts.get("situation_summary", "User needs legal help"),
-                missing_info="\n".join(f"- {item}" for item in missing_info[:5]),
-            ),
-            config=internal_config,
-        )
-
-        # Format questions as natural message
-        if needs_full_intake and questions_asked == 0:
-            # First question with empty conversation - add friendly intro
-            question_text = (
-                "I don't have enough context yet to prepare a brief. "
-                "Let me ask you some questions about your legal situation.\n\n"
+            result = await structured_llm.ainvoke(
+                FOLLOW_UP_PROMPT.format(
+                    situation_summary=facts.get("situation_summary", "User needs legal help"),
+                    missing_info="\n".join(f"- {item}" for item in missing_info[:5]),
+                ),
+                config=internal_config,
             )
+
+            pending_questions = result.questions
+            total_questions = len(pending_questions)
+            current_index = 0
+
+            logger.info(f"Generated {total_questions} questions for brief intake")
+
+        # Get the next question (always index 0 since pending_questions only has remaining)
+        if pending_questions:
+            question = pending_questions[0]
+            remaining_questions = pending_questions[1:]
+
+            # Build the message with progress indicator
+            # current_index tracks which question we're on in the original sequence
+            progress = f"**Question {current_index + 1}/{total_questions}**"
+
+            if needs_full_intake and questions_asked == 0 and current_index == 0:
+                # First question with empty conversation - add friendly intro
+                question_text = (
+                    "I need a bit more information to prepare your brief. "
+                    "I'll ask you a few questions - feel free to say \"I don't know\" if you're unsure.\n\n"
+                    f"{progress}\n\n{question}"
+                )
+            else:
+                question_text = f"{progress}\n\n{question}"
+
+            return {
+                "messages": [AIMessage(content=question_text)],
+                "brief_questions_asked": questions_asked + 1,
+                "brief_pending_questions": remaining_questions,
+                "brief_current_question_index": current_index + 1,
+                "brief_total_questions": total_questions,
+                "quick_replies": ["I don't know", "Generate brief now"],
+            }
         else:
-            question_text = "Before I prepare your lawyer brief, I need a bit more information:\n\n"
-
-        for i, q in enumerate(result.questions, 1):
-            question_text += f"{i}. {q}\n"
-
-        return {
-            "messages": [AIMessage(content=question_text)],
-            "brief_questions_asked": questions_asked + 1,
-            "quick_replies": ["I don't know", "Let me explain", "Generate brief now"],
-        }
+            # No more questions - should not reach here normally
+            logger.warning("No more questions but brief_ask_questions_node called")
+            return {
+                "brief_info_complete": True,
+                "brief_pending_questions": [],
+            }
 
     except Exception as e:
         logger.error(f"Brief question generation error: {e}")
@@ -490,6 +551,7 @@ async def brief_ask_questions_node(
             "messages": [AIMessage(content="I'll prepare your brief with the information we have.")],
             "brief_questions_asked": questions_asked + 1,
             "brief_info_complete": True,  # Force completion
+            "brief_pending_questions": [],
         }
 
 
