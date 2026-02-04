@@ -44,8 +44,11 @@ npm run lint
 ```bash
 cd backend
 conda activate law_agent
-pytest                                    # Run all tests
-pytest tests/test_conversational_mode.py tests/test_brief_generation.py -v  # Conversational mode tests
+pytest                                              # Run all tests
+pytest tests/test_conversational_mode.py -v         # Conversational mode tests
+pytest tests/test_brief_generation.py -v            # Brief generation tests
+pytest tests/test_lookup_law.py -v                  # RAG/lookup tests
+pytest tests/test_file.py::test_name -v             # Run single test
 ```
 
 ### Data Ingestion (RAG)
@@ -196,11 +199,16 @@ When the conversation has gathered sufficient facts (analysis_readiness >= 0.7),
 User clicks "Generate Brief" button to create a lawyer brief:
 
 1. **Info Check**: Extracts facts from conversation, identifies gaps
-2. **Ask Questions**: Loops until all critical info gathered (no round limit)
+2. **Ask Questions**: Questions asked **one at a time** with progress indicator ("Question 1/3")
    - Handles "I don't know" → moves item to unknown list, asks next question
    - Handles "Generate brief now" → generates with available info
 3. **Generate Brief**: Creates comprehensive brief with Summary, Facts, Parties, Goals, Questions for Lawyer
    - Includes "Information Not Provided" section for skipped items
+
+**State fields** (in `conversational_state.py`):
+- `brief_pending_questions` - Remaining questions to ask
+- `brief_current_question_index` - For progress display
+- `brief_total_questions` - Total questions in current round
 
 **Triggers**:
 - `[GENERATE_BRIEF]` - Start brief mode (sent by frontend button)

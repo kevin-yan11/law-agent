@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { CopilotChat } from "@copilotkit/react-ui";
+import "@copilotkit/react-ui/styles.css";
 import {
   useCopilotReadable,
   useCopilotChat,
@@ -11,14 +12,6 @@ import {
 import { TextMessage, MessageRole } from "@copilotkit/runtime-client-gql";
 import { StateSelector } from "../components/StateSelector";
 import { FileUpload } from "../components/FileUpload";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -31,15 +24,15 @@ import {
 import {
   Scale,
   MapPin,
-  AlertTriangle,
-  ArrowRight,
   FileCheck,
   X,
   Menu,
   ArrowLeft,
   Upload,
-  MessageSquare,
   FileText,
+  Sparkles,
+  ChevronRight,
+  Shield,
 } from "lucide-react";
 
 export default function ChatPage() {
@@ -75,7 +68,6 @@ export default function ChatPage() {
   };
 
   // Access agent state for quick replies
-  // The agent generates these suggestions after each response
   const { state: agentState } = useCoAgent<{
     quick_replies?: string[];
     suggest_brief?: boolean;
@@ -84,146 +76,116 @@ export default function ChatPage() {
     name: "auslaw_agent",
   });
 
-  // Extract quick replies from agent state
   const quickReplies = agentState?.quick_replies;
 
   // Dynamic initial message based on selected state
   const getInitialMessage = () => {
     if (userState) {
-      return `G'day! I'm AusLaw AI, your Australian legal assistant. I see you're in ${userState}. I can help you with:\n\n• Understanding your legal rights\n• Step-by-step guides for legal procedures\n• Finding a lawyer\n\nWhat would you like to know?`;
+      return `G'day! I'm your AusLaw AI assistant. I see you're in **${userState}**.\n\nI can help you with:\n• Understanding your legal rights\n• Step-by-step guides for legal procedures\n• Finding a qualified lawyer\n\nHow can I assist you today?`;
     }
-    return "G'day! I'm AusLaw AI, your Australian legal assistant. Please select your state above so I can provide accurate information for your jurisdiction.";
+    return "G'day! I'm your AusLaw AI assistant. Please select your state/territory from the sidebar so I can provide jurisdiction-specific guidance.";
   };
 
-  // Sidebar content component - reused for desktop and mobile
+  // Sidebar content component
   const SidebarContent = () => (
-    <div className="flex flex-col h-full">
-      {/* Info Cards */}
-      <div className="space-y-4 flex-1 overflow-y-auto">
-        {/* State Selector Card */}
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-medium flex items-center gap-2">
-              <MapPin className="h-4 w-4 text-sky-700" />
-              Your Location
-            </CardTitle>
-            <CardDescription>
-              Select your state for jurisdiction-specific information.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <StateSelector
-              selectedState={userState}
-              onStateChange={setUserState}
-            />
-            {userState && (
-              <p className="mt-3 text-sm text-sky-700 bg-sky-50 rounded-lg px-3 py-2">
-                Legal information tailored to {userState} law.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Document Upload */}
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-medium flex items-center gap-2">
-              <Upload className="h-4 w-4 text-sky-700" />
-              Upload Document
-            </CardTitle>
-            <CardDescription>
-              Upload a lease, contract, or legal document for analysis.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <FileUpload onFileUploaded={handleFileUploaded} />
-            {uploadedDocument && (
-              <div className="mt-3 flex items-center gap-2">
-                <Badge
-                  variant="secondary"
-                  className="gap-2 py-1.5 bg-green-50 text-green-800 border-green-200"
-                >
-                  <FileCheck className="h-3 w-3 text-green-600" />
-                  <span className="truncate max-w-[140px]">
-                    {uploadedDocument.filename}
-                  </span>
-                  <button
-                    onClick={clearDocument}
-                    className="ml-1 hover:text-red-600 transition-colors cursor-pointer"
-                    aria-label="Remove document"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Quick Actions */}
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-medium flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-sky-700" />
-              Quick Questions
-            </CardTitle>
-            <CardDescription>
-              Click to ask a common question.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            <QuickAction
-              text="What are my rights as a tenant?"
-              onClose={() => setSidebarOpen(false)}
-            />
-            <QuickAction
-              text="How do I get my bond back?"
-              onClose={() => setSidebarOpen(false)}
-            />
-            <QuickAction
-              text="Can my landlord increase rent?"
-              onClose={() => setSidebarOpen(false)}
-            />
-            <QuickAction
-              text="I need a lawyer"
-              onClose={() => setSidebarOpen(false)}
-            />
-          </CardContent>
-        </Card>
-
-        {/* Generate Brief */}
-        <Card className="border-sky-200 bg-sky-50/50 shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-medium flex items-center gap-2">
-              <FileText className="h-4 w-4 text-sky-700" />
-              Lawyer Brief
-            </CardTitle>
-            <CardDescription>
-              Generate a summary to share with a solicitor.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <GenerateBriefButton onClose={() => setSidebarOpen(false)} />
-          </CardContent>
-        </Card>
+    <div className="flex flex-col h-full gap-6">
+      {/* Location Section */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+          <MapPin className="h-4 w-4 text-primary" />
+          Your Jurisdiction
+        </div>
+        <StateSelector
+          selectedState={userState}
+          onStateChange={setUserState}
+        />
+        {userState && (
+          <div className="flex items-center gap-2 text-xs text-primary bg-primary/5 rounded-lg px-3 py-2 border border-primary/10">
+            <Shield className="h-3.5 w-3.5" />
+            <span>Legal info tailored to {userState}</span>
+          </div>
+        )}
       </div>
 
-      {/* Disclaimer - fixed at bottom */}
-      <Alert className="mt-4 border-amber-200 bg-amber-50/80 shrink-0">
-        <AlertTriangle className="h-4 w-4 text-amber-600" />
-        <AlertTitle className="text-amber-800 text-sm">Disclaimer</AlertTitle>
-        <AlertDescription className="text-amber-700 text-xs">
-          This tool provides general legal information, not legal advice.
-          Consult a qualified lawyer for specific advice.
-        </AlertDescription>
-      </Alert>
+      {/* Divider */}
+      <div className="h-px bg-slate-200" />
+
+      {/* Document Upload Section */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+          <Upload className="h-4 w-4 text-primary" />
+          Document Analysis
+        </div>
+        <FileUpload onFileUploaded={handleFileUploaded} />
+        {uploadedDocument && (
+          <Badge
+            variant="secondary"
+            className="gap-2 py-2 px-3 bg-emerald-50 text-emerald-700 border border-emerald-200 w-full justify-start"
+          >
+            <FileCheck className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+            <span className="truncate flex-1 text-left">
+              {uploadedDocument.filename}
+            </span>
+            <button
+              onClick={clearDocument}
+              className="hover:text-red-600 transition-colors cursor-pointer ml-auto"
+              aria-label="Remove document"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </Badge>
+        )}
+        <p className="text-xs text-slate-500">
+          Upload leases, contracts, or legal documents for AI analysis.
+        </p>
+      </div>
+
+      {/* Divider */}
+      <div className="h-px bg-slate-200" />
+
+      {/* Quick Actions */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+          <Sparkles className="h-4 w-4 text-primary" />
+          Quick Questions
+        </div>
+        <div className="space-y-1.5">
+          <QuickAction
+            text="What are my tenant rights?"
+            onClose={() => setSidebarOpen(false)}
+          />
+          <QuickAction
+            text="How do I get my bond back?"
+            onClose={() => setSidebarOpen(false)}
+          />
+          <QuickAction
+            text="Help me find a lawyer"
+            onClose={() => setSidebarOpen(false)}
+          />
+        </div>
+      </div>
+
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* Generate Brief Button */}
+      <GenerateBriefButton onClose={() => setSidebarOpen(false)} />
+
+      {/* Disclaimer */}
+      <div className="p-3 bg-amber-50/80 border border-amber-200/60 rounded-lg">
+        <p className="text-xs text-amber-800 leading-relaxed">
+          <span className="font-medium">Disclaimer:</span> This tool provides
+          general legal information only, not legal advice. Always consult a
+          qualified solicitor for specific matters.
+        </p>
+      </div>
     </div>
   );
 
   return (
     <div className="flex h-dvh bg-slate-50">
       {/* Mobile Header */}
-      <div className="fixed top-0 left-0 right-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-200 lg:hidden">
+      <header className="fixed top-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200/80 lg:hidden">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
@@ -231,46 +193,54 @@ export default function ChatPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="cursor-pointer"
+                  className="cursor-pointer hover:bg-slate-100"
                   aria-label="Open menu"
                 >
-                  <Menu className="h-5 w-5" />
+                  <Menu className="h-5 w-5 text-slate-600" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-80 p-4">
-                <SheetHeader className="mb-4">
-                  <SheetTitle className="flex items-center gap-2">
-                    <Scale className="h-5 w-5 text-sky-700" />
-                    AusLaw AI
+              <SheetContent side="left" className="w-80 p-5">
+                <SheetHeader className="mb-6">
+                  <SheetTitle className="flex items-center gap-2.5 text-lg">
+                    <div className="p-1.5 bg-primary/10 rounded-lg">
+                      <Scale className="h-5 w-5 text-primary" />
+                    </div>
+                    <span className="font-semibold">AusLaw AI</span>
                   </SheetTitle>
                 </SheetHeader>
                 <SidebarContent />
               </SheetContent>
             </Sheet>
+
             <div className="flex items-center gap-2">
-              <Scale className="h-5 w-5 text-sky-700" />
+              <div className="p-1 bg-primary/10 rounded-md">
+                <Scale className="h-5 w-5 text-primary" />
+              </div>
               <span className="font-semibold text-slate-900">AusLaw AI</span>
             </div>
           </div>
+
           <Link href="/">
             <Button
               variant="ghost"
               size="sm"
-              className="text-slate-600 cursor-pointer"
+              className="text-slate-500 hover:text-slate-900 cursor-pointer gap-1"
             >
-              <ArrowLeft className="h-4 w-4 mr-1" />
-              Home
+              <ArrowLeft className="h-4 w-4" />
+              <span className="hidden sm:inline">Home</span>
             </Button>
           </Link>
         </div>
-      </div>
+      </header>
 
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex w-80 xl:w-96 flex-col border-r border-slate-200 bg-white">
+      <aside className="hidden lg:flex w-80 xl:w-[340px] flex-col border-r border-slate-200/80 bg-white">
         {/* Sidebar Header */}
-        <div className="flex items-center justify-between p-4 border-b border-slate-100">
-          <Link href="/" className="flex items-center gap-2 group">
-            <Scale className="h-6 w-6 text-sky-700" />
+        <div className="flex items-center justify-between p-5 border-b border-slate-100">
+          <Link href="/" className="flex items-center gap-2.5 group">
+            <div className="p-1.5 bg-primary/10 rounded-lg group-hover:bg-primary/15 transition-colors">
+              <Scale className="h-6 w-6 text-primary" />
+            </div>
             <span className="text-xl font-semibold text-slate-900 tracking-tight">
               AusLaw AI
             </span>
@@ -279,31 +249,31 @@ export default function ChatPage() {
             <Button
               variant="ghost"
               size="sm"
-              className="text-slate-500 hover:text-slate-900 cursor-pointer"
+              className="text-slate-400 hover:text-slate-700 cursor-pointer"
             >
-              <ArrowLeft className="h-4 w-4 mr-1" />
-              Home
+              <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
         </div>
 
         {/* Sidebar Body */}
-        <div className="flex-1 p-4 overflow-hidden">
+        <div className="flex-1 p-5 overflow-y-auto">
           <SidebarContent />
         </div>
       </aside>
 
       {/* Main Chat Area */}
-      <main className="flex-1 flex flex-col min-w-0">
+      <main className="flex-1 flex flex-col min-w-0 bg-gradient-to-b from-slate-50 to-white">
         {/* Add top padding on mobile for fixed header */}
-        <div className="flex-1 pt-14 lg:pt-0 flex flex-col">
+        <div className="flex-1 pt-14 lg:pt-0 flex flex-col min-h-0 overflow-hidden">
           <CopilotChat
-            className="flex-1"
+            className="flex-1 min-h-0"
             labels={{
               title: "AusLaw AI",
               initial: getInitialMessage(),
             }}
           />
+
           {/* Quick Replies from agent state */}
           {quickReplies && quickReplies.length > 0 && (
             <QuickRepliesPanel replies={quickReplies} />
@@ -314,6 +284,9 @@ export default function ChatPage() {
   );
 }
 
+/**
+ * QuickAction - Sidebar quick question button
+ */
 function QuickAction({
   text,
   onClose,
@@ -334,20 +307,18 @@ function QuickAction({
   };
 
   return (
-    <Button
-      variant="ghost"
-      className="w-full justify-start text-left h-auto py-3 px-3 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer"
+    <button
       onClick={handleClick}
+      className="w-full flex items-center gap-2 text-left text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg px-3 py-2.5 transition-colors cursor-pointer group"
     >
-      <ArrowRight className="mr-2 h-3 w-3 text-slate-400 shrink-0" />
-      <span className="truncate">{text}</span>
-    </Button>
+      <ChevronRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-primary transition-colors" />
+      <span>{text}</span>
+    </button>
   );
 }
 
 /**
- * QuickRepliesPanel - Renders suggested quick reply buttons from agent state.
- * These are generated by the agent after each response to guide the conversation.
+ * QuickRepliesPanel - Renders suggested quick reply buttons from agent state
  */
 function QuickRepliesPanel({ replies }: { replies: string[] }) {
   const { appendMessage } = useCopilotChat();
@@ -362,13 +333,14 @@ function QuickRepliesPanel({ replies }: { replies: string[] }) {
   };
 
   return (
-    <div className="flex flex-wrap gap-2 p-3 border-t border-slate-100 bg-slate-50/50">
+    <div className="flex flex-wrap gap-2 p-4 border-t border-slate-200/80 bg-white/80 backdrop-blur-sm">
+      <span className="text-xs text-slate-400 w-full mb-1">Suggested:</span>
       {replies.map((reply, index) => (
         <Button
           key={index}
           variant="outline"
           size="sm"
-          className="text-sm text-slate-700 hover:text-slate-900 hover:bg-white border-slate-200 cursor-pointer"
+          className="text-sm text-slate-600 hover:text-slate-900 hover:bg-white hover:border-primary/30 border-slate-200 cursor-pointer transition-all"
           onClick={() => handleQuickReply(reply)}
         >
           {reply}
@@ -379,8 +351,7 @@ function QuickRepliesPanel({ replies }: { replies: string[] }) {
 }
 
 /**
- * GenerateBriefButton - Triggers lawyer brief generation from conversation history.
- * Sends a special marker that the backend recognizes to enter brief mode.
+ * GenerateBriefButton - Triggers lawyer brief generation
  */
 function GenerateBriefButton({ onClose }: { onClose?: () => void }) {
   const { appendMessage, isLoading } = useCopilotChat();
@@ -400,10 +371,10 @@ function GenerateBriefButton({ onClose }: { onClose?: () => void }) {
     <Button
       onClick={handleGenerateBrief}
       disabled={isLoading}
-      className="w-full bg-sky-600 hover:bg-sky-700 text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+      className="w-full bg-primary hover:bg-primary/90 text-white cursor-pointer gap-2 h-11 text-sm font-medium shadow-sm shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
     >
-      <FileText className="h-4 w-4 mr-2" />
-      Generate Brief
+      <FileText className="h-4 w-4" />
+      Generate Lawyer Brief
     </Button>
   );
 }
