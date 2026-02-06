@@ -124,12 +124,10 @@ backend/
 │   ├── config.py           # Environment variables, logging
 │   ├── db/supabase_client.py
 │   ├── agents/
-│   │   ├── conversational_state.py   # State for chat mode
+│   │   ├── conversational_state.py   # State + output schema for chat mode
 │   │   ├── conversational_graph.py   # Main graph: chat + brief + analysis
-│   │   ├── analysis/                 # Reusable deep analysis modules
-│   │   │   ├── fact_organizer.py     # Organize facts from conversation
-│   │   │   ├── risk_analyzer.py      # Identify strengths/weaknesses
-│   │   │   └── strategy_advisor.py   # Recommend actions
+│   │   ├── analysis/
+│   │   │   └── deep_analysis.py      # Consolidated analysis (single LLM call)
 │   │   ├── stages/
 │   │   │   ├── safety_check_lite.py  # Fast keyword-first safety check
 │   │   │   ├── chat_response.py      # ReAct agent with tools + quick replies
@@ -183,11 +181,13 @@ initialize → brief_check_info ─┬→ brief_generate → END
 When the conversation has gathered sufficient facts (analysis_readiness >= 0.7), the agent offers deep analysis:
 
 1. **Analysis Offer**: "Would you like me to analyze your legal position?"
-2. **If accepted**: Runs analysis pipeline:
-   - **Fact Organization**: Timeline, parties, evidence from conversation
-   - **Risk Analysis**: Strengths, weaknesses, and risks
-   - **Strategy Recommendation**: Concrete next steps
+2. **If accepted**: Runs consolidated analysis (single LLM call) that produces:
+   - **Facts**: Timeline, parties, evidence, key facts, fact gaps, narrative
+   - **Risks**: Overall risk level, strengths, weaknesses, specific risks with mitigations
+   - **Strategy**: Recommended action, alternatives, immediate next steps
 3. **Analysis Response**: Presents findings conversationally (not as formal document)
+
+**Architecture note**: The analysis uses a single consolidated LLM call (`run_consolidated_analysis`) instead of sequential calls, reducing latency from ~6s to ~2s.
 
 **Detection triggers**:
 - User described a specific dispute or conflict

@@ -74,9 +74,13 @@ class ConversationalOutput(TypedDict):
     The frontend accesses these via useCoAgent hook.
     Note: The quick reply LLM call uses get_internal_llm_config to suppress
     streaming, preventing raw JSON from appearing in the chat.
+
+    IMPORTANT: Messages are NOT included here to prevent duplicates.
+    Messages are streamed separately via AG-UI protocol events (emit-messages).
+    Including messages here causes the full accumulated history to be re-sent
+    each turn, resulting in duplicate messages in CopilotChat.
     """
 
-    messages: Annotated[list[BaseMessage], operator.add]
     quick_replies: Optional[list[str]]
     suggest_brief: bool
     suggest_lawyer: bool

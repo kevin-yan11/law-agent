@@ -26,6 +26,9 @@ def get_chat_agent_config(config: Optional[RunnableConfig] = None) -> RunnableCo
     This allows the final response to stream naturally while hiding intermediate
     tool call events (which can be confusing when they appear then disappear).
 
+    Note: Intermediate messages like "Let me search..." will appear then disappear
+    when the final response arrives. This is a tradeoff for keeping streaming.
+
     Args:
         config: The current LangGraph config from the node.
 
