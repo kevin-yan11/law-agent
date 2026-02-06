@@ -25,16 +25,16 @@ import {
 } from "@/components/ui/sheet";
 import {
   Scale,
-  MapPin,
   FileCheck,
   X,
   Menu,
   ArrowLeft,
-  Upload,
   FileText,
-  Sparkles,
-  ChevronRight,
-  Shield,
+  Home,
+  Briefcase,
+  Plus,
+  Users,
+  RefreshCw,
 } from "lucide-react";
 
 export default function ChatPage() {
@@ -89,7 +89,18 @@ export default function ChatPage() {
     name: "auslaw_agent",
   });
 
-  const quickReplies = agentState?.quick_replies;
+  // Quick replies from agent state
+  // TODO: Remove mock data after testing - set to undefined to use real backend data
+  const quickReplies = agentState?.quick_replies ||
+    ["What protections do I have?", "Can you give examples?", "What should I do next?", "How do I file a claim?"];
+
+  // Track if conversation has started (to show/hide welcome section)
+  const [conversationStarted, setConversationStarted] = useState(false);
+
+  // Reset conversation handler - reload page to start fresh
+  const handleNewConversation = () => {
+    window.location.reload();
+  };
 
   // Dynamic initial message based on selected state
   const getInitialMessage = () => {
@@ -110,38 +121,27 @@ export default function ChatPage() {
 
       {/* Location Section */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-          <MapPin className="h-4 w-4 text-primary" />
+        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
           Your Jurisdiction
         </div>
         <StateSelector
           selectedState={userState}
           onStateChange={setUserState}
         />
-        {userState && (
-          <div className="flex items-center gap-2 text-xs text-primary bg-primary/5 rounded-lg px-3 py-2 border border-primary/10">
-            <Shield className="h-3.5 w-3.5" />
-            <span>Legal info tailored to {userState}</span>
-          </div>
-        )}
       </div>
-
-      {/* Divider */}
-      <div className="h-px bg-slate-200" />
 
       {/* Document Upload Section */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-          <Upload className="h-4 w-4 text-primary" />
+        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
           Document Analysis
         </div>
         <FileUpload onFileUploaded={handleFileUploaded} />
         {uploadedDocument && (
           <Badge
             variant="secondary"
-            className="gap-2 py-2 px-3 bg-emerald-50 text-emerald-700 border border-emerald-200 w-full justify-start"
+            className="gap-2 h-10 px-3 bg-emerald-50 text-emerald-700 border border-emerald-200 w-full justify-start text-sm"
           >
-            <FileCheck className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+            <FileCheck className="h-4 w-4 text-emerald-600 shrink-0" />
             <span className="truncate flex-1 text-left">
               {uploadedDocument.filename}
             </span>
@@ -150,38 +150,13 @@ export default function ChatPage() {
               className="hover:text-red-600 transition-colors cursor-pointer ml-auto"
               aria-label="Remove document"
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="h-4 w-4" />
             </button>
           </Badge>
         )}
-        <p className="text-xs text-slate-500">
+        <p className="text-sm text-slate-500">
           Upload leases, contracts, or legal documents for AI analysis.
         </p>
-      </div>
-
-      {/* Divider */}
-      <div className="h-px bg-slate-200" />
-
-      {/* Quick Actions */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-          <Sparkles className="h-4 w-4 text-primary" />
-          Quick Questions
-        </div>
-        <div className="space-y-1.5">
-          <QuickAction
-            text="What are my tenant rights?"
-            onClose={() => setSidebarOpen(false)}
-          />
-          <QuickAction
-            text="How do I get my bond back?"
-            onClose={() => setSidebarOpen(false)}
-          />
-          <QuickAction
-            text="Help me find a lawyer"
-            onClose={() => setSidebarOpen(false)}
-          />
-        </div>
       </div>
 
       {/* Spacer */}
@@ -189,6 +164,16 @@ export default function ChatPage() {
 
       {/* Generate Brief Button */}
       <GenerateBriefButton onClose={() => setSidebarOpen(false)} />
+
+      {/* New Conversation Button */}
+      <Button
+        onClick={handleNewConversation}
+        variant="outline"
+        className="w-full cursor-pointer gap-2 h-10 text-sm font-medium border-slate-200 hover:bg-slate-50 hover:border-slate-300 transition-all"
+      >
+        <Plus className="h-4 w-4" />
+        New Conversation
+      </Button>
 
       {/* Disclaimer */}
       <div className="p-3 bg-amber-50/80 border border-amber-200/60 rounded-lg">
@@ -282,62 +267,102 @@ export default function ChatPage() {
       </aside>
 
       {/* Main Chat Area */}
-      <main className="flex-1 flex flex-col min-w-0 bg-gradient-to-b from-slate-50 to-white">
+      <main className="flex-1 flex flex-col min-w-0 bg-gradient-to-b from-slate-50 to-white relative">
+        {/* Chat Header */}
+        <div className="hidden lg:flex items-center justify-between px-6 py-3 border-b border-slate-200/60 bg-white/80 backdrop-blur-sm">
+          <span className="text-sm font-medium text-slate-600">
+            {mode === "analysis" ? "Case Analysis" : "Legal Chat"}
+          </span>
+        </div>
+
         {/* Add top padding on mobile for fixed header */}
         <div className="flex-1 pt-14 lg:pt-0 flex flex-col min-h-0 overflow-hidden">
+          {/* Welcome Section - shown only when conversation hasn't started */}
+          {!conversationStarted && (
+            <WelcomeSection onTopicClick={() => setConversationStarted(true)} />
+          )}
+
+          {/* Chat area */}
           <CopilotChat
             className="flex-1 min-h-0"
             labels={{
-              title: "AusLaw AI",
+              title: mode === "analysis" ? "Case Analysis" : "Legal Chat",
               initial: getInitialMessage(),
             }}
           />
-
-          {/* Quick Replies from agent state */}
-          {quickReplies && quickReplies.length > 0 && (
-            <QuickRepliesPanel replies={quickReplies} />
-          )}
         </div>
+
+        {/* Quick Replies - positioned above input, outside overflow container */}
+        {quickReplies && quickReplies.length > 0 && (
+          <div className="quick-replies-container">
+            <QuickRepliesPanel replies={quickReplies} />
+          </div>
+        )}
       </main>
     </div>
   );
 }
 
 /**
- * QuickAction - Sidebar quick question button
+ * WelcomeSection - Welcome header with topic pill buttons
  */
-function QuickAction({
-  text,
-  onClose,
-}: {
-  text: string;
-  onClose?: () => void;
-}) {
+function WelcomeSection({ onTopicClick }: { onTopicClick: () => void }) {
   const { appendMessage } = useCopilotChat();
 
-  const handleClick = async () => {
+  const topics = [
+    {
+      icon: Home,
+      label: "What are my tenant rights?",
+      prompt: "What are my tenant rights?",
+    },
+    {
+      icon: Briefcase,
+      label: "Explain unfair dismissal laws",
+      prompt: "Explain unfair dismissal laws",
+    },
+    {
+      icon: Users,
+      label: "Help with a family law dispute",
+      prompt: "Help with a family law dispute",
+    },
+    {
+      icon: RefreshCw,
+      label: "What does Australian Consumer Law cover?",
+      prompt: "What does Australian Consumer Law cover?",
+    },
+  ];
+
+  const handleTopicClick = async (prompt: string) => {
+    onTopicClick(); // Hide welcome section immediately
     await appendMessage(
       new TextMessage({
         role: MessageRole.User,
-        content: text,
+        content: prompt,
       })
     );
-    onClose?.();
   };
 
   return (
-    <button
-      onClick={handleClick}
-      className="w-full flex items-center gap-2 text-left text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg px-3 py-2.5 transition-colors cursor-pointer group"
-    >
-      <ChevronRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-primary transition-colors" />
-      <span>{text}</span>
-    </button>
+    <div className="flex flex-wrap justify-center gap-2 px-4 py-3">
+      {topics.map((topic) => (
+        <button
+          key={topic.label}
+          onClick={() => handleTopicClick(topic.prompt)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-full border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all duration-200 cursor-pointer group"
+        >
+          <topic.icon className="h-4 w-4 text-slate-400 group-hover:text-slate-600 transition-colors flex-shrink-0" />
+          <span className="text-sm text-slate-600 group-hover:text-slate-900 transition-colors">
+            {topic.label}
+          </span>
+        </button>
+      ))}
+    </div>
   );
 }
 
 /**
  * QuickRepliesPanel - Renders suggested quick reply buttons from agent state
+ * Positioned above the input box
  */
 function QuickRepliesPanel({ replies }: { replies: string[] }) {
   const { appendMessage } = useCopilotChat();
@@ -352,14 +377,13 @@ function QuickRepliesPanel({ replies }: { replies: string[] }) {
   };
 
   return (
-    <div className="flex flex-wrap gap-2 p-4 border-t border-slate-200/80 bg-white/80 backdrop-blur-sm">
-      <span className="text-xs text-slate-400 w-full mb-1">Suggested:</span>
-      {replies.map((reply, index) => (
+    <div className="quick-replies-panel">
+      {replies.slice(0, 3).map((reply, index) => (
         <Button
           key={index}
           variant="outline"
           size="sm"
-          className="text-sm text-slate-600 hover:text-slate-900 hover:bg-white hover:border-primary/30 border-slate-200 cursor-pointer transition-all"
+          className="text-sm text-slate-600 hover:text-slate-900 hover:bg-white hover:border-primary/30 border-slate-200 bg-white cursor-pointer transition-all rounded-full px-4"
           onClick={() => handleQuickReply(reply)}
         >
           {reply}
@@ -390,7 +414,7 @@ function GenerateBriefButton({ onClose }: { onClose?: () => void }) {
     <Button
       onClick={handleGenerateBrief}
       disabled={isLoading}
-      className="w-full bg-primary hover:bg-primary/90 text-white cursor-pointer gap-2 h-11 text-sm font-medium shadow-sm shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+      className="w-full bg-primary hover:bg-primary/90 text-white cursor-pointer gap-2 h-10 text-sm font-medium shadow-sm shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
     >
       <FileText className="h-4 w-4" />
       Generate Lawyer Brief

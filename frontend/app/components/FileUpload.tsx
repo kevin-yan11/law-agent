@@ -89,7 +89,7 @@ export function FileUpload({ onFileUploaded, disabled }: FileUploadProps) {
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="w-full">
       <input
         ref={fileInputRef}
         type="file"
@@ -100,22 +100,22 @@ export function FileUpload({ onFileUploaded, disabled }: FileUploadProps) {
       />
 
       {uploadedFile ? (
-        <Badge variant="secondary" className="gap-2 py-1.5 px-3">
-          <span className="truncate max-w-[150px]">{uploadedFile}</span>
+        <Badge variant="secondary" className="gap-2 h-12 px-4 text-sm w-full justify-center">
+          <span className="truncate max-w-[180px]">{uploadedFile}</span>
           <button
             onClick={clearFile}
             className="hover:text-destructive transition-colors"
             title="Remove file"
           >
-            <X className="h-3 w-3" />
+            <X className="h-4 w-4" />
           </button>
         </Badge>
       ) : (
         <Button
           variant="outline"
-          size="sm"
           onClick={handleClick}
           disabled={disabled || isUploading}
+          className="w-full h-12 text-sm border-dashed border-slate-300 text-slate-500 hover:text-slate-700 hover:border-slate-400 hover:bg-slate-50"
         >
           {isUploading ? (
             <>

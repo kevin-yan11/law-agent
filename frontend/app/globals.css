@@ -262,6 +262,44 @@
 }
 
 /* ============================================
+   Quick Replies Panel - Above Input
+   ============================================ */
+
+.quick-replies-container {
+  position: absolute;
+  bottom: 150px;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.quick-replies-panel {
+  max-width: 56rem;
+  margin: 0 auto;
+  width: 100%;
+  padding: 0.5rem 1rem;
+  pointer-events: auto;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.quick-replies-panel > span {
+  flex-shrink: 0;
+  width: auto;
+  margin-bottom: 0;
+}
+
+@media (max-width: 768px) {
+  .quick-replies-container {
+    bottom: 80px;
+  }
+}
+
+/* ============================================
    CopilotKit Input Area
    ============================================ */
 
@@ -317,13 +355,11 @@
 }
 
 /* ============================================
-   CopilotKit Header (if visible)
+   CopilotKit Header (hidden - using custom header)
    ============================================ */
 
 .copilotKitHeader {
-  background: #ffffff !important;
-  border-bottom: 1px solid #e2e8f0 !important;
-  padding: 0.75rem 1rem !important;
+  display: none !important;
 }
 
 /* ============================================
@@ -415,114 +451,172 @@
 
 /* ============================================
    Mode-based Theming
-   Chat Mode (default): Relaxing, casual
-   Analysis Mode: Professional, serious
+   Chat Mode (default): Relaxing, casual, friendly
+   Analysis Mode: Professional, serious, authoritative
    ============================================ */
 
 /* Global transition for theme switching */
 [data-mode] {
-  transition: background-color 0.3s ease-out, border-color 0.3s ease-out;
+  transition: background-color 0.4s ease-out, border-color 0.4s ease-out, box-shadow 0.4s ease-out;
 }
 
-/* Chat Mode (Default) - Relaxing & Casual */
+/* ============================================
+   CHAT MODE - Relaxing & Casual
+   Light blue tones, friendly feel
+   ============================================ */
 [data-mode="chat"] {
   --copilot-kit-primary-color: #3b82f6;
-  --copilot-kit-background-color: #f8fafc;
+  --copilot-kit-background-color: #f0f9ff;
   --mode-bg: 210 40% 98%;
   --mode-sidebar-bg: 0 0% 100%;
   --mode-primary: 221 83% 53%;
   --mode-accent: 38 92% 50%;
 }
 
+[data-mode="chat"] .chat-page-container {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #f0f9ff 100%);
+}
+
 [data-mode="chat"] .copilotKitMessages {
-  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%) !important;
+  background: linear-gradient(180deg, rgba(240, 249, 255, 0.5) 0%, #ffffff 100%) !important;
 }
 
 [data-mode="chat"] .copilotKitMessage.copilotKitUserMessage {
-  background: #3b82f6 !important;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+  border-radius: 1.25rem 1.25rem 0.375rem 1.25rem !important;
 }
 
 [data-mode="chat"] .copilotKitMessage.copilotKitAssistantMessage {
   background: #ffffff !important;
-  border: 1px solid #e2e8f0 !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
+  border: 1px solid #e0f2fe !important;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.08) !important;
+  border-radius: 1.25rem 1.25rem 1.25rem 0.375rem !important;
 }
 
-/* Analysis Mode - Professional & Serious */
+
+[data-mode="chat"] .copilotKitInput {
+  background: #ffffff !important;
+  border-top: 1px solid #e0f2fe !important;
+}
+
+[data-mode="chat"] .copilotKitTextarea,
+[data-mode="chat"] .copilotKitInput textarea {
+  background: #f0f9ff !important;
+  border: 1px solid #bfdbfe !important;
+}
+
+[data-mode="chat"] .copilotKitTextarea:focus,
+[data-mode="chat"] .copilotKitInput textarea:focus {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
+  background: #ffffff !important;
+}
+
+/* Chat mode sidebar */
+[data-mode="chat"] aside {
+  background: #ffffff !important;
+  border-right-color: #e0f2fe !important;
+}
+
+/* ============================================
+   ANALYSIS MODE - Professional & Serious
+   Navy tones, authoritative feel
+   ============================================ */
 [data-mode="analysis"] {
-  --copilot-kit-primary-color: #1e3a5f;
-  --copilot-kit-background-color: #f1f5f9;
+  --copilot-kit-primary-color: #0f172a;
+  --copilot-kit-background-color: #f8fafc;
   --mode-bg: 220 14% 96%;
   --mode-sidebar-bg: 220 20% 97%;
-  --mode-primary: 222 47% 25%;
+  --mode-primary: 222 47% 11%;
   --mode-accent: 24 100% 50%;
 }
 
 [data-mode="analysis"] .chat-page-container {
-  background: #f1f5f9;
+  background: linear-gradient(180deg, #f1f5f9 0%, #e2e8f0 100%);
 }
 
 [data-mode="analysis"] .copilotKitMessages {
-  background: linear-gradient(180deg, #f1f5f9 0%, #f8fafc 100%) !important;
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%) !important;
 }
 
 [data-mode="analysis"] .copilotKitMessage.copilotKitUserMessage {
-  background: #1e3a5f !important;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important;
+  border-radius: 0.75rem !important;
+  font-weight: 450 !important;
 }
 
 [data-mode="analysis"] .copilotKitMessage.copilotKitAssistantMessage {
   background: #ffffff !important;
   border: 1px solid #cbd5e1 !important;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08) !important;
+  border-left: 3px solid #0f172a !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06) !important;
+  border-radius: 0.75rem !important;
 }
 
-[data-mode="analysis"] .copilotKitSendButton,
-[data-mode="analysis"] .copilotKitInput button[type="submit"] {
-  background: #1e3a5f !important;
+
+[data-mode="analysis"] .copilotKitInput {
+  background: #f8fafc !important;
+  border-top: 2px solid #e2e8f0 !important;
 }
 
-[data-mode="analysis"] .copilotKitSendButton:hover,
-[data-mode="analysis"] .copilotKitInput button[type="submit"]:hover {
-  background: #172c47 !important;
+[data-mode="analysis"] .copilotKitTextarea,
+[data-mode="analysis"] .copilotKitInput textarea {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
 }
 
 [data-mode="analysis"] .copilotKitTextarea:focus,
 [data-mode="analysis"] .copilotKitInput textarea:focus {
-  border-color: #1e3a5f !important;
-  box-shadow: 0 0 0 3px rgba(30, 58, 95, 0.15) !important;
+  border-color: #0f172a !important;
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.1) !important;
 }
 
-/* Analysis mode sidebar styling */
-[data-mode="analysis"] .sidebar-container {
-  background: #f8fafc;
-  border-right-color: #cbd5e1;
+[data-mode="analysis"] .copilotKitSendButton,
+[data-mode="analysis"] .copilotKitInput button[type="submit"] {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important;
+}
+
+[data-mode="analysis"] .copilotKitSendButton:hover,
+[data-mode="analysis"] .copilotKitInput button[type="submit"]:hover {
+  background: linear-gradient(135deg, #0f172a 0%, #020617 100%) !important;
+}
+
+/* Analysis mode sidebar - more structured */
+[data-mode="analysis"] aside {
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%) !important;
+  border-right: 2px solid #e2e8f0 !important;
 }
 
 /* Analysis mode primary button colors */
 [data-mode="analysis"] .bg-primary {
-  background-color: #1e3a5f !important;
+  background-color: #0f172a !important;
 }
 
 [data-mode="analysis"] .text-primary {
-  color: #1e3a5f !important;
+  color: #0f172a !important;
 }
 
 [data-mode="analysis"] .border-primary {
-  border-color: #1e3a5f !important;
+  border-color: #0f172a !important;
 }
 
 [data-mode="analysis"] .bg-primary\/10 {
-  background-color: rgba(30, 58, 95, 0.1) !important;
+  background-color: rgba(15, 23, 42, 0.1) !important;
 }
 
 [data-mode="analysis"] .bg-primary\/5 {
-  background-color: rgba(30, 58, 95, 0.05) !important;
+  background-color: rgba(15, 23, 42, 0.05) !important;
 }
 
 [data-mode="analysis"] .hover\:bg-primary\/90:hover {
-  background-color: rgba(30, 58, 95, 0.9) !important;
+  background-color: rgba(15, 23, 42, 0.9) !important;
 }
 
 [data-mode="analysis"] .shadow-primary\/20 {
-  box-shadow: 0 1px 2px rgba(30, 58, 95, 0.2) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.2) !important;
+}
+
+/* Analysis mode - more formal typography hints */
+[data-mode="analysis"] .copilotKitMessage {
+  letter-spacing: 0.01em !important;
 }

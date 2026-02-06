@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageCircle, Briefcase } from "lucide-react";
+import { MessageCircle, Scale } from "lucide-react";
 import { useMode, AppMode } from "../contexts/ModeContext";
 import { cn } from "@/lib/utils";
 
@@ -19,19 +19,26 @@ export function ModeToggle({ className }: ModeToggleProps) {
 
   return (
     <div className={cn("space-y-3", className)}>
-      <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+      <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
         Mode
       </div>
 
       {/* Pill Toggle */}
-      <div className="relative flex p-1 bg-slate-100 rounded-lg">
+      <div
+        className={cn(
+          "relative flex p-1.5 rounded-xl transition-all duration-300",
+          mode === "chat"
+            ? "bg-blue-50 border border-blue-100"
+            : "bg-slate-100 border border-slate-200"
+        )}
+      >
         {/* Sliding background indicator */}
         <div
           className={cn(
-            "absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-md transition-all duration-300 ease-out",
+            "absolute top-1.5 bottom-1.5 w-[calc(50%-6px)] rounded-lg transition-all duration-300 ease-out shadow-sm",
             mode === "chat"
-              ? "left-1 bg-white shadow-sm"
-              : "left-[calc(50%+2px)] bg-white shadow-sm"
+              ? "left-1.5 bg-white border border-blue-200"
+              : "left-[calc(50%+3px)] bg-white border border-slate-300"
           )}
         />
 
@@ -39,13 +46,18 @@ export function ModeToggle({ className }: ModeToggleProps) {
         <button
           onClick={() => handleToggle("chat")}
           className={cn(
-            "relative z-10 flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-colors duration-200 cursor-pointer",
+            "relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer",
             mode === "chat"
-              ? "text-primary"
-              : "text-slate-500 hover:text-slate-700"
+              ? "text-blue-600"
+              : "text-slate-400 hover:text-slate-600"
           )}
         >
-          <MessageCircle className="h-4 w-4" />
+          <MessageCircle
+            className={cn(
+              "h-4 w-4 transition-transform duration-200",
+              mode === "chat" && "scale-110"
+            )}
+          />
           <span>Chat</span>
         </button>
 
@@ -53,21 +65,31 @@ export function ModeToggle({ className }: ModeToggleProps) {
         <button
           onClick={() => handleToggle("analysis")}
           className={cn(
-            "relative z-10 flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-colors duration-200 cursor-pointer",
+            "relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer",
             mode === "analysis"
-              ? "text-primary"
-              : "text-slate-500 hover:text-slate-700"
+              ? "text-slate-800"
+              : "text-slate-400 hover:text-slate-600"
           )}
         >
-          <Briefcase className="h-4 w-4" />
+          <Scale
+            className={cn(
+              "h-4 w-4 transition-transform duration-200",
+              mode === "analysis" && "scale-110"
+            )}
+          />
           <span>Analysis</span>
         </button>
       </div>
 
       {/* Mode Description */}
-      <p className="text-xs text-slate-500">
+      <p
+        className={cn(
+          "text-xs leading-relaxed transition-colors duration-200",
+          mode === "chat" ? "text-blue-600/70" : "text-slate-500"
+        )}
+      >
         {mode === "chat"
-          ? "Casual Q&A for quick legal questions"
+          ? "General legal Q&A with AI"
           : "Guided intake for deep case analysis"}
       </p>
     </div>

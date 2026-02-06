@@ -28,7 +28,7 @@ interface StateSelectorProps {
 export function StateSelector({ selectedState, onStateChange }: StateSelectorProps) {
   return (
     <Select value={selectedState || undefined} onValueChange={onStateChange}>
-      <SelectTrigger className="w-[200px]">
+      <SelectTrigger className="w-full h-10">
         <MapPin className="mr-2 h-4 w-4 text-muted-foreground" />
         <SelectValue placeholder="Select your state" />
       </SelectTrigger>

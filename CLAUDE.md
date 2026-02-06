@@ -129,6 +129,28 @@ AIMessage(content="...")
 2. Public URL shared with agent via `useCopilotReadable`
 3. Agent calls `analyze_document(document_url=...)`
 
+## Frontend Structure
+
+```
+frontend/app/
+├── chat/page.tsx           # Main chat page with sidebar + CopilotChat
+├── components/
+│   ├── StateSelector.tsx   # Australian state/territory dropdown
+│   ├── FileUpload.tsx      # Document upload to Supabase Storage
+│   ├── ModeToggle.tsx      # Chat/Analysis mode toggle
+│   └── AnalysisOutput.tsx  # Deep analysis results display
+├── contexts/
+│   └── ModeContext.tsx     # App-wide mode state (chat | analysis)
+├── globals.css             # CopilotKit overrides, mode-based theming
+└── layout.tsx              # CopilotKit provider setup
+```
+
+### Key Frontend Patterns
+- **Mode-based theming**: CSS uses `[data-mode="chat"]` and `[data-mode="analysis"]` selectors for distinct visual styles
+- **Quick replies**: Agent state provides `quick_replies` array via `useCoAgent`, limited to 3 items in UI
+- **Topic pills**: Starter topic buttons shown before conversation begins, hidden after first message
+- **CopilotKit styling**: Override classes like `.copilotKitMessages`, `.copilotKitInput` in globals.css
+
 ## Backend Structure
 
 ```
