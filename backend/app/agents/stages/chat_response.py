@@ -14,6 +14,7 @@ from app.agents.conversational_state import ConversationalState
 from app.agents.utils import get_internal_llm_config, get_chat_agent_config
 from app.tools.lookup_law import lookup_law
 from app.tools.find_lawyer import find_lawyer
+from app.tools.analyze_document import analyze_document
 from app.config import logger
 
 
@@ -207,7 +208,7 @@ def _create_chat_agent(user_state: str, has_document: bool, ui_mode: str = "chat
     llm = ChatOpenAI(model="gpt-4o", temperature=0.3)
 
     # Tools available for chat
-    tools = [lookup_law, find_lawyer]
+    tools = [lookup_law, find_lawyer, analyze_document]
 
     # Select system prompt based on UI mode
     if ui_mode == "analysis":
