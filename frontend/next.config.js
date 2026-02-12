@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {};
+const nextConfig = {
+  serverExternalPackages: ["@copilotkit/runtime", "type-graphql"],
+};
 
 module.exports = nextConfig;
