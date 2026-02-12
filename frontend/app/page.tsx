@@ -20,8 +20,36 @@ import {
 } from "lucide-react";
 
 export default function LandingPage() {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    name: "AusLaw AI",
+    url: siteUrl,
+    description:
+      "Get instant answers about Australian law, find qualified lawyers, and receive step-by-step legal guidance across all states and territories.",
+    applicationCategory: "LegalService",
+    operatingSystem: "Web",
+    offers: {
+      "@type": "Offer",
+      price: "0",
+      priceCurrency: "AUD",
+    },
+    provider: {
+      "@type": "Organization",
+      name: "AusLaw AI",
+      url: siteUrl,
+    },
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+
       {/* Navigation */}
       <nav className="fixed top-4 left-4 right-4 z-50 bg-white/80 backdrop-blur-md border border-slate-200 rounded-2xl shadow-sm">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
