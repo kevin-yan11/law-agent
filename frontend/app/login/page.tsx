@@ -14,7 +14,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Scale, Loader2 } from "lucide-react";
+import Image from "next/image";
+import { Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -61,7 +62,7 @@ export default function LoginPage() {
           href="/"
           className="flex items-center justify-center gap-2 mb-8"
         >
-          <Scale className="h-7 w-7 text-sky-700" />
+          <Image src="/logo.svg" alt="AusLaw AI" width={80} height={80} />
           <span className="text-2xl font-semibold text-slate-900 tracking-tight">
             AusLaw AI
           </span>

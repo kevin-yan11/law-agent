@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -8,7 +9,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  Scale,
   Search,
   Users,
   FileText,
@@ -26,7 +26,7 @@ export default function LandingPage() {
       <nav className="fixed top-4 left-4 right-4 z-50 bg-white/80 backdrop-blur-md border border-slate-200 rounded-2xl shadow-sm">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Scale className="h-6 w-6 text-sky-700" />
+            <Image src="/logo.svg" alt="AusLaw AI" width={72} height={72} />
             <span className="text-xl font-semibold text-slate-900 tracking-tight">
               AusLaw AI
             </span>
@@ -212,7 +212,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <Scale className="h-5 w-5 text-slate-500" />
+              <Image src="/logo.svg" alt="AusLaw AI" width={56} height={56} className="opacity-50" />
               <span className="text-slate-500 font-medium">AusLaw AI</span>
             </div>
             <p className="text-sm text-slate-500 text-center">

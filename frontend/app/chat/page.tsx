@@ -35,8 +35,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import Image from "next/image";
 import {
-  Scale,
   FileCheck,
   X,
   Menu,
@@ -248,9 +248,7 @@ export default function ChatPage() {
               <SheetContent side="left" className="w-80 p-5">
                 <SheetHeader className="mb-6">
                   <SheetTitle className="flex items-center gap-2.5 text-lg">
-                    <div className="p-1.5 bg-primary/10 rounded-lg">
-                      <Scale className="h-5 w-5 text-primary" />
-                    </div>
+                    <Image src="/logo.svg" alt="AusLaw AI" width={72} height={72} />
                     <span className="font-semibold">AusLaw AI</span>
                   </SheetTitle>
                 </SheetHeader>
@@ -259,9 +257,7 @@ export default function ChatPage() {
             </Sheet>
 
             <div className="flex items-center gap-2">
-              <div className="p-1 bg-primary/10 rounded-md">
-                <Scale className="h-5 w-5 text-primary" />
-              </div>
+              <Image src="/logo.svg" alt="AusLaw AI" width={80} height={80} />
               <span className="font-semibold text-slate-900">AusLaw AI</span>
             </div>
           </div>
@@ -303,9 +299,7 @@ export default function ChatPage() {
         {/* Sidebar Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-100">
           <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="p-1.5 bg-primary/10 rounded-lg group-hover:bg-primary/15 transition-colors">
-              <Scale className="h-6 w-6 text-primary" />
-            </div>
+            <Image src="/logo.svg" alt="AusLaw AI" width={80} height={80} />
             <span className="text-xl font-semibold text-slate-900 tracking-tight">
               AusLaw AI
             </span>
