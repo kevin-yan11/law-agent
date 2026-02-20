@@ -171,14 +171,11 @@ backend/
 │   ├── db/supabase_client.py
 │   ├── agents/
 │   │   ├── conversational_state.py   # State + output schema for chat mode
-│   │   ├── conversational_graph.py   # Main graph: chat + brief + analysis
-│   │   ├── analysis/
-│   │   │   └── deep_analysis.py      # Consolidated analysis (single LLM call)
+│   │   ├── conversational_graph.py   # Main graph: chat + brief
 │   │   ├── stages/
 │   │   │   ├── safety_check_lite.py  # Fast keyword-first safety check
 │   │   │   ├── chat_response.py      # ReAct agent with tools + quick replies
-│   │   │   ├── brief_flow.py         # Brief generation nodes
-│   │   │   └── deep_analysis.py      # Deep analysis flow nodes
+│   │   │   └── brief_flow.py         # Brief generation nodes
 │   │   ├── schemas/                  # Emergency resources
 │   │   └── utils/                    # Config helpers, context extraction
 │   ├── services/                     # RAG services, AustLII search, reranking
@@ -201,7 +198,7 @@ backend/
 
 ## Conversational Mode
 
-Fast, natural conversation with tools and optional deep analysis.
+Fast, natural conversation with tools.
 
 ```
 CHAT FLOW:
@@ -216,8 +213,6 @@ initialize → brief_check_info ─┬→ brief_generate → END
                     └──────────┴→ brief_ask_questions (loop)
 ```
 
-**Note**: Deep analysis nodes exist in code (`stages/deep_analysis.py`, `analysis/deep_analysis.py`) but are not currently wired into the graph. Analysis mode uses a different system prompt in the same ReAct agent.
-
 ### Key Features
 - **Safety Check**: Keyword detection first, LLM fallback only when uncertain
 - **Chat Response**: ReAct agent with tools: `lookup_law`, `find_lawyer`, `analyze_document`, `search_case_law`
@@ -225,13 +220,8 @@ initialize → brief_check_info ─┬→ brief_generate → END
 - **Tool Usage**: Use `lookup_law` for legislation (RAG + AustLII fallback), `search_case_law` for court decisions (AustLII)
 - **AustLII Sources**: When results come from AustLII (source `"austlii"` or `"austlii_case"`), the LLM cites the source URL and notes the user should verify
 
-### Deep Analysis Mode (not yet wired into graph)
-Deep analysis nodes exist in code but are not connected to the graph. The code supports:
-- Consolidated analysis via single LLM call (`run_consolidated_analysis`)
-- Facts/risks/strategy output structure
-- Analysis offer based on readiness threshold
-
-Currently, analysis mode uses a different system prompt (guided intake flow) in the same ReAct agent, with the same 4 tools available.
+### Analysis Mode
+Analysis mode uses the same ReAct agent and tools as chat mode, but with a different system prompt that guides a lawyer consultation flow (understand situation → explain law → suggest options). No separate graph nodes - purely prompt-driven.
 
 ### Brief Generation Mode
 User clicks "Generate Brief" button to create a lawyer brief:
