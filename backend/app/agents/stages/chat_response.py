@@ -15,6 +15,7 @@ from app.agents.utils import get_internal_llm_config, get_chat_agent_config
 from app.tools.lookup_law import lookup_law
 from app.tools.find_lawyer import find_lawyer
 from app.tools.analyze_document import analyze_document
+from app.tools.search_case_law import search_case_law
 from app.config import logger
 
 
@@ -52,9 +53,11 @@ If the user's state/territory shows as "Not specified", ask them to select their
 
 ## Tool Usage Guidelines
 - Use lookup_law when user asks about specific rights, laws, or legal requirements
+- Use search_case_law when user asks about court cases, legal precedents, or how courts have ruled on specific issues
 - Use find_lawyer when user asks for lawyer recommendations or says they need professional help
 - Use analyze_document when the user has uploaded a document and asks you to review, analyze, or explain it. You MUST call this tool to read the document content - you cannot see the document without it. IMPORTANT: Always use the exact Document URL shown above - NEVER make up or guess a URL.
 - Always pass the user's state to tools (if known)
+- When results come from AustLII (source "austlii" or "austlii_case"), cite the source URL and note the user should verify on the official site
 
 Remember: Your goal is to be helpful and informative while keeping the conversation natural and flowing."""
 
@@ -80,10 +83,12 @@ When someone describes a legal issue:
 Once you have a clear picture:
 - Explain what the law says in PLAIN ENGLISH - no legal jargon
 - Use the lookup_law tool to find relevant legislation
+- Use the search_case_law tool to find relevant court decisions and precedents
+- Explain what the law says AND how courts have applied it in practice
+- Reference specific cases when they strengthen or clarify the user's position
 - Explain their rights and obligations clearly
 - Point out the strengths in their position
 - Honestly discuss weaknesses and risks they should know about
-- Mention relevant cases if helpful (explain in everyday language)
 - Note any time-sensitive deadlines (e.g., limitation periods)
 
 ### Phase 3: Options & Strategy (When Asked or Natural)
@@ -119,8 +124,10 @@ Laws vary significantly between Australian states.
 
 ## Tool Usage Guidelines
 - Use lookup_law when you need to reference specific laws or legislation
+- Use search_case_law to find relevant court decisions, tribunal rulings, and case precedents that support or clarify the legal analysis
 - Use find_lawyer when user needs professional legal help
 - Use analyze_document when the user has uploaded a document and asks you to review, analyze, or explain it. You MUST call this tool to read the document content - you cannot see the document without it. IMPORTANT: Always use the exact Document URL shown above - NEVER make up or guess a URL.
+- When results come from AustLII (source "austlii" or "austlii_case"), cite the source URL and note the user should verify on the official site
 
 ## Your Tone
 - Warm and approachable, not formal or intimidating
@@ -217,7 +224,7 @@ def _create_chat_agent(user_state: str, has_document: bool, document_url: str = 
     llm = ChatOpenAI(model="gpt-4o", temperature=0.3)
 
     # Tools available for chat
-    tools = [lookup_law, find_lawyer, analyze_document]
+    tools = [lookup_law, find_lawyer, analyze_document, search_case_law]
 
     # Select system prompt based on UI mode
     if ui_mode == "analysis":

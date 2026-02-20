@@ -2,7 +2,8 @@
 Legal Document Lookup Tool using RAG
 
 Provides hybrid search (vector + keyword) with reranking for
-retrieving relevant Australian legislation.
+retrieving relevant Australian legislation. Falls back to AustLII
+search when RAG returns no or low-confidence results.
 """
 
 import asyncio
@@ -10,6 +11,7 @@ from langchain_core.tools import tool
 from app.db import supabase
 from app.services.hybrid_retriever import get_hybrid_retriever
 from app.services.reranker import get_reranker
+from app.services.austlii_search import get_austlii_searcher
 from app.config import logger
 
 
@@ -58,6 +60,21 @@ def lookup_law(query: str, state: str) -> str | list[dict]:
         # Run async search in sync context
         results = asyncio.run(_search_and_rerank(query, jurisdiction))
 
+        # Assess result quality and try AustLII fallback if needed
+        rag_quality = _assess_result_quality(results) if results else "no_results"
+        needs_fallback = not results or rag_quality == "low_confidence"
+
+        if needs_fallback:
+            logger.info(
+                f"RAG quality={rag_quality}, trying AustLII fallback for '{query}' in {state}"
+            )
+            fallback_results = asyncio.run(
+                _austlii_legislation_fallback(query, state)
+            )
+            if fallback_results:
+                return fallback_results
+            # If AustLII also fails, fall through to return RAG results (if any)
+
         if not results:
             msg = f"No legislation found for '{query}'"
             if jurisdiction:
@@ -67,27 +84,15 @@ def lookup_law(query: str, state: str) -> str | list[dict]:
         # Batch fetch all parent contents (single query instead of N queries)
         parent_contents = _get_parent_contents_batch(results)
 
-        # Determine overall result quality based on confidence levels
-        confidence_levels = [r.get("confidence", "low") for r in results]
-        has_high_confidence = "high" in confidence_levels
-        has_medium_confidence = "medium" in confidence_levels
-
-        if has_high_confidence:
-            result_quality = "good"
-        elif has_medium_confidence:
-            result_quality = "uncertain"
-        else:
-            result_quality = "low_confidence"
-
         formatted_results = []
 
         # Add quality warning for uncertain results
-        if result_quality == "low_confidence":
+        if rag_quality == "low_confidence":
             formatted_results.append({
                 "warning": "The following results may not directly address your question. "
                            "Consider rephrasing your query or consulting a legal professional."
             })
-        elif result_quality == "uncertain":
+        elif rag_quality == "uncertain":
             formatted_results.append({
                 "note": "These results appear relevant but may not fully address your specific question."
             })
@@ -118,7 +123,7 @@ def lookup_law(query: str, state: str) -> str | list[dict]:
             })
 
         # Add metadata about result quality
-        formatted_results.append({"result_quality": result_quality})
+        formatted_results.append({"result_quality": rag_quality})
 
         return formatted_results
 
@@ -224,6 +229,67 @@ def _get_parent_contents_batch(chunks: list[dict]) -> dict[str, str]:
         logger.warning(f"Failed to batch fetch parent chunks: {e}")
 
     return {}
+
+
+def _assess_result_quality(results: list[dict]) -> str:
+    """Assess overall quality of RAG results based on confidence levels."""
+    confidence_levels = [r.get("confidence", "low") for r in results]
+    if "high" in confidence_levels:
+        return "good"
+    elif "medium" in confidence_levels:
+        return "uncertain"
+    return "low_confidence"
+
+
+async def _austlii_legislation_fallback(
+    query: str, state: str
+) -> list[dict] | None:
+    """
+    Search AustLII for legislation when RAG has no or low-confidence results.
+
+    Returns formatted results matching lookup_law's output structure,
+    or None if AustLII also returns nothing.
+    """
+    searcher = get_austlii_searcher()
+
+    results = await searcher.search_legislation(query, state, max_results=5)
+    if not results:
+        logger.info("AustLII legislation fallback also returned no results")
+        return None
+
+    # Fetch content for top 3 results (parallel)
+    content_tasks = [
+        searcher.fetch_content(r["url"])
+        for r in results[:3]
+    ]
+    contents = await asyncio.gather(*content_tasks, return_exceptions=True)
+
+    formatted = []
+    formatted.append({
+        "note": f"Results from AustLII (Australian Legal Information Institute) for {state}. "
+                f"These are from an external search, not our curated database. "
+                f"Please verify details via the source links provided."
+    })
+
+    for i, item in enumerate(results):
+        content = ""
+        if i < len(contents) and isinstance(contents[i], str):
+            content = contents[i]
+
+        formatted.append({
+            "content": content or item["title"],
+            "citation": item["title"],
+            "jurisdiction": state,
+            "source_url": item["url"],
+            "relevance_score": 0,
+            "confidence": "web_search",
+            "source": "austlii",
+        })
+
+    formatted.append({"result_quality": "web_fallback"})
+
+    logger.info(f"AustLII fallback returned {len(results)} legislation results for '{query}' in {state}")
+    return formatted
 
 
 # Keep backward compatibility - also export as function

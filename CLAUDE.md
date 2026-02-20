@@ -15,7 +15,7 @@ CopilotChat         HttpAgent proxy      Custom LangGraph
 + StateSelector     (AG-UI protocol)     (CopilotKitState)
 + FileUpload                                   ↓
 + useCopilotReadable              Tools: lookup_law, find_lawyer,
-                                  generate_checklist, analyze_document
+                                  analyze_document, search_case_law
 ```
 
 **Frontend**: Next.js 14 + CopilotKit + shadcn/ui + Tailwind CSS
@@ -85,12 +85,22 @@ BACKEND_URL=http://localhost:8000
 
 ## Key Architecture Decisions
 
-### RAG System
-The `lookup_law` tool uses hybrid retrieval: vector similarity (pgvector) + full-text search + RRF fusion + optional Cohere reranking.
+### RAG System + AustLII Fallback
+The `lookup_law` tool uses hybrid retrieval: vector similarity (pgvector) + full-text search + RRF fusion + optional Cohere reranking. When RAG returns no results or low-confidence results, it falls back to searching AustLII (Australian Legal Information Institute) for consolidated legislation.
 
 - **Data Source**: Hugging Face `isaacus/open-australian-legal-corpus` (Primary Legislation)
-- **Supported Jurisdictions**: NSW, QLD, FEDERAL (no Victoria in corpus)
+- **RAG Jurisdictions**: NSW, QLD, FEDERAL (other states not in corpus)
+- **AustLII Fallback**: Covers all states/territories when RAG has no or low-confidence results
 - **Chunking**: Parent chunks (2000 tokens) + Child chunks (500 tokens) for docs >= 10K chars
+
+### AustLII Integration
+AustLII is a free public legal database operated by UNSW and UTS Law faculties. No API key required.
+
+- **Service**: `app/services/austlii_search.py` - shared by `lookup_law` fallback and `search_case_law` tool
+- **Legislation search**: Searches consolidated acts per state via `au/legis/{state}/consol_act`
+- **Case law search**: Searches court decisions via `au/cases/{state}`
+- **Endpoint**: `https://www.austlii.edu.au/cgi-bin/sinosrch.cgi` (GET with query params)
+- **SSRF protection**: URL validation before and after redirects, restricted to `austlii.edu.au` hosts
 
 ### CopilotKit Context Passing
 Frontend uses `useCopilotReadable` to share user's selected state and uploaded document URL. Backend reads from `state["copilotkit"]["context"]`.
@@ -171,8 +181,8 @@ backend/
 │   │   │   └── deep_analysis.py      # Deep analysis flow nodes
 │   │   ├── schemas/                  # Emergency resources
 │   │   └── utils/                    # Config helpers, context extraction
-│   ├── services/                     # RAG services (embedding, retrieval, reranking)
-│   ├── tools/                        # lookup_law, find_lawyer, generate_checklist, analyze_document
+│   ├── services/                     # RAG services, AustLII search, reranking
+│   ├── tools/                        # lookup_law, find_lawyer, search_case_law, analyze_document
 │   └── utils/                        # Document parsing, URL fetching
 ├── tests/
 └── scripts/                          # Data ingestion, RAG evaluation
@@ -195,10 +205,10 @@ Fast, natural conversation with tools and optional deep analysis.
 
 ```
 CHAT FLOW:
-initialize → safety_check_lite → chat_response → [END | analysis_offer]
-                    │                                    │
-                    ↓ (if crisis)                        ↓ (if accepted)
-            escalation_response → END     deep_analysis → analysis_response → END
+initialize → safety_check_lite → chat_response → END
+                    │
+                    ↓ (if crisis)
+            escalation_response → END
 
 BRIEF FLOW (user-triggered via "Generate Brief" button):
 initialize → brief_check_info ─┬→ brief_generate → END
@@ -206,30 +216,22 @@ initialize → brief_check_info ─┬→ brief_generate → END
                     └──────────┴→ brief_ask_questions (loop)
 ```
 
+**Note**: Deep analysis nodes exist in code (`stages/deep_analysis.py`, `analysis/deep_analysis.py`) but are not currently wired into the graph. Analysis mode uses a different system prompt in the same ReAct agent.
+
 ### Key Features
 - **Safety Check**: Keyword detection first, LLM fallback only when uncertain
-- **Chat Response**: ReAct agent with `lookup_law` and `find_lawyer` tools
+- **Chat Response**: ReAct agent with tools: `lookup_law`, `find_lawyer`, `analyze_document`, `search_case_law`
 - **Quick Replies**: 2-4 suggested follow-up options after each response
-- **Tool Usage**: ALWAYS use `lookup_law` for legal references, never web search
-- **Deep Analysis**: Optional analysis offered when enough facts are gathered
+- **Tool Usage**: Use `lookup_law` for legislation (RAG + AustLII fallback), `search_case_law` for court decisions (AustLII)
+- **AustLII Sources**: When results come from AustLII (source `"austlii"` or `"austlii_case"`), the LLM cites the source URL and notes the user should verify
 
-### Deep Analysis Mode
-When the conversation has gathered sufficient facts (analysis_readiness >= 0.7), the agent offers deep analysis:
+### Deep Analysis Mode (not yet wired into graph)
+Deep analysis nodes exist in code but are not connected to the graph. The code supports:
+- Consolidated analysis via single LLM call (`run_consolidated_analysis`)
+- Facts/risks/strategy output structure
+- Analysis offer based on readiness threshold
 
-1. **Analysis Offer**: "Would you like me to analyze your legal position?"
-2. **If accepted**: Runs consolidated analysis (single LLM call) that produces:
-   - **Facts**: Timeline, parties, evidence, key facts, fact gaps, narrative
-   - **Risks**: Overall risk level, strengths, weaknesses, specific risks with mitigations
-   - **Strategy**: Recommended action, alternatives, immediate next steps
-3. **Analysis Response**: Presents findings conversationally (not as formal document)
-
-**Architecture note**: The analysis uses a single consolidated LLM call (`run_consolidated_analysis`) instead of sequential calls, reducing latency from ~6s to ~2s.
-
-**Detection triggers**:
-- User described a specific dispute or conflict
-- Multiple facts mentioned (dates, amounts, events)
-- Other party identified (landlord, employer, etc.)
-- User asked "what should I do?" or "what are my options?"
+Currently, analysis mode uses a different system prompt (guided intake flow) in the same ReAct agent, with the same 4 tools available.
 
 ### Brief Generation Mode
 User clicks "Generate Brief" button to create a lawyer brief:
